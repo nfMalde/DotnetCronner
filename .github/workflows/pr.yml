@@ -24,3 +24,8 @@ jobs:
 
       - name: Test
         run: dotnet test DotnetCronner.slnx -c Release --no-build
+
+      - name: Build sample harness (CronTestApp)
+        # The full-feature sample isn't in DotnetCronner.slnx, so build it here to guarantee the examples
+        # always compile against the current library. Pulls in CronTestApp.ExternalJobs via project reference.
+        run: dotnet build samples/CronTestApp/CronTestApp/CronTestApp.csproj -c Release
