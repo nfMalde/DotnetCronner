@@ -48,9 +48,9 @@ summary and runs the full build + tests. The **publish** job — the actual NuGe
 Release — is gated on the `release` environment, so you (or a required reviewer) get one last **Approve**
 click confirming the version before anything irreversible happens.
 
-Only the tagged package is packed; its dependencies keep their committed floor `<Version>` (via the
-`CRONNER_RELEASE_KEY` / `CRONNER_RELEASE_VERSION` mechanism in `Directory.Build.props`). No `.csproj` edit
-is needed to release.
+Only the tagged package is packed; each of its dependencies is pinned to its own last-published version,
+which the workflow feeds in through per-package `CRONNER_VER_<KEY>` environment variables that
+`Directory.Build.props` reads (no `.csproj` carries a `<Version>`). No `.csproj` edit is needed to release.
 
 > One-time setup: create a `release` environment (Settings → Environments) and add yourself as a
 > **required reviewer** so the approval gate is active. Publishing uses **NuGet trusted publishing (OIDC)** —

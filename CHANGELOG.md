@@ -12,4 +12,4 @@ package does not require releasing the others. Each package keeps its own change
 
 Each package's changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
-[CONTRIBUTING.md](CONTRIBUTING.md) for how a release is cut (tag `<key>/vX.Y.Z`).
+[CONTRIBUTING.md](CONTRIBUTING.md) for how a release is cut (tag `<key>-vX.Y.Z`).

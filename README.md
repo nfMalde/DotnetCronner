@@ -16,7 +16,9 @@ in-process — there is no separate dashboard app to host or secure.
 - Pluggable persistence through a single `ICronnerStore` interface (in-memory by default).
 - Redis and Entity Framework Core stores as separate packages; Redis also works as a second-level cache.
 - Per-task priority and concurrency policy; a task never overlaps with itself by default.
-- Lifecycle hooks, configurable DI scopes, and build-time cron validation.
+- Twelve lifecycle, lock, and progress hooks (global or per schedule), plus in-process progress reporting
+  via `ICronnerJobContext`.
+- Configurable DI scopes, an execution-lock keepalive for long-running jobs, and build-time cron validation.
 
 ## Why DotnetCronner?
 
@@ -192,7 +194,8 @@ app.UseDotnetCronner(c => c
 
 ### Concurrency policy
 
-Set per task with `.WithConcurrency(...)` or `[CronnerTask(...)] { Concurrency = ... }`:
+Set per task with `.WithConcurrency(...)` or the attribute's `Concurrency` property
+(`[CronnerTask(cronstring: "*/5 * * * *", Concurrency = CronnerConcurrencyMode.Queue)]`):
 
 - `DropAndForget` (default) — skip an occurrence that fires while a previous run is still executing.
 - `Queue` — run the missed occurrence immediately after the current one finishes (never overlapping).
@@ -222,7 +225,7 @@ provider, so register them in the dedicated collection when using dedicated serv
 ### Lifecycle and lock hooks
 
 Hook into task execution for logging, metrics, notifications, or custom error handling. A hook that
-throws is logged and ignored, so it never breaks a task. There are eight events:
+throws is logged and ignored, so it never breaks a task. There are twelve events:
 
 | Event | Fires |
 | --- | --- |
@@ -358,6 +361,11 @@ The analyzer ships inside the `DotnetCronner` package, so no extra reference is 
 
 ## Limitations and roadmap
 
+**DotnetCronner is pre-1.0.** Expect a few more `0.0.x` releases and one or more previews before a stable
+`1.0.0`. While on `0.x`, the public API may still change between releases as it settles and more extension
+points open up, so pin your versions accordingly — `1.0.0` will follow once the surface has proven itself
+in real use.
+
 Running DotnetCronner across **multiple instances or nodes is not officially supported yet.** The Redis
 and EF Core stores already include the claiming primitives this needs (per-job locks and optimistic
 concurrency), but coordinated multi-node operation has not been fully validated. It is on the roadmap —
@@ -372,6 +380,15 @@ never mistaken for a stalled worker and re-run. A task only becomes reclaimable 
 renewing for longer than `LockTtl` (a crash or a very long GC pause); when that reclaim happens it is
 logged as a warning. If a worker loses a lock mid-run, its own execution is cancelled so the task is never
 running twice at once.
+
+## Samples
+
+Two runnable samples live in [`samples/`](samples):
+
+- **`DotnetCronner.Sample.WebApi`** — a minimal quickstart.
+- **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes,
+  all twelve hooks in every registration style, progress, the keepalive and lock loss, discovery and DI
+  modes), driven entirely by a `.env` file. Copy `.env.example` to `.env` and `dotnet run`.
 
 ## Changelog
 
