@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="CronTestApp/CronTestApp.csproj" />
+  <Project Path="CronTestApp.ExternalJobs/CronTestApp.ExternalJobs.csproj" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+</Solution>

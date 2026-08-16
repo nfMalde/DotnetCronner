@@ -1,0 +1,201 @@
+name: Release Package
+
+# Releases are triggered manually by a maintainer from the Actions tab (workflow_dispatch), never by a
+# pushed tag or by merging a PR — so a contributor can neither mis-publish nor trigger a release. Pick the
+# package and how to bump; the workflow reads the last release tag and computes the next version, so you
+# don't have to look it up. The exact version is shown in the "prepare" summary, and the actual NuGet push
+# waits on the `release` environment's approval gate (configure required reviewers in
+# Settings > Environments > release) — a final confirmation before the irreversible publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release
+        type: choice
+        options: [abstractions, core, redis, efcore]
+        required: true
+      bump:
+        description: Version part to bump (ignored if 'version' is set)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: Explicit version, e.g. 1.0.0 (overrides bump)
+        required: false
+      prerelease:
+        description: Prerelease? (appends -preview.<run> to an auto-bumped version; for an explicit version include the suffix yourself)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.package }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      project: ${{ steps.plan.outputs.project }}
+      pkgdir: ${{ steps.plan.outputs.pkgdir }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      ver_abstractions: ${{ steps.plan.outputs.ver_abstractions }}
+      ver_core: ${{ steps.plan.outputs.ver_core }}
+      ver_redis: ${{ steps.plan.outputs.ver_redis }}
+      ver_efcore: ${{ steps.plan.outputs.ver_efcore }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compute version
+        id: plan
+        run: |
+          set -euo pipefail
+          KEY="${{ github.event.inputs.package }}"
+          case "$KEY" in
+            abstractions) PROJECT="src/DotnetCronner.Abstractions/DotnetCronner.Abstractions.csproj"; PKGDIR="src/DotnetCronner.Abstractions" ;;
+            core)         PROJECT="src/DotnetCronner/DotnetCronner.csproj"; PKGDIR="src/DotnetCronner" ;;
+            redis)        PROJECT="src/DotnetCronner.Stores.Redis/DotnetCronner.Stores.Redis.csproj"; PKGDIR="src/DotnetCronner.Stores.Redis" ;;
+            efcore)       PROJECT="src/DotnetCronner.Stores.EntityFrameworkCore/DotnetCronner.Stores.EntityFrameworkCore.csproj"; PKGDIR="src/DotnetCronner.Stores.EntityFrameworkCore" ;;
+            *) echo "::error::Unknown package '$KEY'."; exit 1 ;;
+          esac
+
+          git fetch --tags --force
+          EXPLICIT="${{ github.event.inputs.version }}"
+          if [[ -n "$EXPLICIT" ]]; then
+            # Explicit version is used verbatim (include any prerelease suffix yourself).
+            if [[ ! "$EXPLICIT" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Version '$EXPLICIT' is not a valid SemVer."; exit 1
+            fi
+            VERSION="$EXPLICIT"
+          else
+            # Highest existing FULL release (exclude prereleases, which contain '-').
+            LATEST="$(git tag -l "${KEY}-v*" | sed "s#^${KEY}-v##" | grep -vE -- '-' | sort -V | tail -n1)"
+            [[ -z "$LATEST" ]] && LATEST="0.0.0"
+            IFS=. read -r MA MI PA <<< "$LATEST"
+            case "${{ github.event.inputs.bump }}" in
+              major) MA=$((MA + 1)); MI=0; PA=0 ;;
+              minor) MI=$((MI + 1)); PA=0 ;;
+              patch) PA=$((PA + 1)) ;;
+            esac
+            VERSION="$MA.$MI.$PA"
+            if [[ "${{ github.event.inputs.prerelease }}" == "true" ]]; then
+              VERSION="${VERSION}-preview.${GITHUB_RUN_NUMBER}"
+            fi
+          fi
+
+          # A prerelease is any version carrying a SemVer prerelease suffix.
+          if [[ "$VERSION" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
+
+          TAG="${KEY}-v${VERSION}"
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists — pick a different version/bump."; exit 1
+          fi
+
+          # Cross-package dependency versions: each package's latest published tag (or 0.0.0 if never
+          # released). The package being released takes its computed VERSION. Directory.Build.props reads
+          # these so the packed dependency ranges are correct without any csproj version.
+          ver_of() {
+            local v; v="$(git tag -l "$1-v*" | sed "s#^$1-v##" | sort -V | tail -n1)"
+            [[ -z "$v" ]] && v="0.0.0"
+            printf '%s' "$v"
+          }
+          VER_ABS="$(ver_of abstractions)"; VER_CORE="$(ver_of core)"; VER_REDIS="$(ver_of redis)"; VER_EF="$(ver_of efcore)"
+          case "$KEY" in
+            abstractions) VER_ABS="$VERSION" ;;
+            core)         VER_CORE="$VERSION" ;;
+            redis)        VER_REDIS="$VERSION" ;;
+            efcore)       VER_EF="$VERSION" ;;
+          esac
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "pkgdir=$PKGDIR" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "ver_abstractions=$VER_ABS" >> "$GITHUB_OUTPUT"
+          echo "ver_core=$VER_CORE" >> "$GITHUB_OUTPUT"
+          echo "ver_redis=$VER_REDIS" >> "$GITHUB_OUTPUT"
+          echo "ver_efcore=$VER_EF" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Release plan"
+            echo "- **Package:** \`$KEY\`"
+            echo "- **Version:** \`$VERSION\` (prerelease: $PRERELEASE)"
+            echo "- **Tag:** \`$TAG\`"
+            echo "- **Dependency versions used:** abstractions \`$VER_ABS\`, core \`$VER_CORE\`, redis \`$VER_REDIS\`, efcore \`$VER_EF\`"
+            echo ""
+            echo "The NuGet push is gated on the \`release\` environment — approve it to publish."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build
+        run: dotnet build DotnetCronner.slnx -c Release
+
+      - name: Test
+        run: dotnet test DotnetCronner.slnx -c Release --no-build
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: release   # approval gate: configure required reviewers in Settings > Environments
+    env:
+      KEY: ${{ github.event.inputs.package }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PROJECT: ${{ needs.prepare.outputs.project }}
+      PKGDIR: ${{ needs.prepare.outputs.pkgdir }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack
+        env:
+          CRONNER_VER_ABSTRACTIONS: ${{ needs.prepare.outputs.ver_abstractions }}
+          CRONNER_VER_CORE: ${{ needs.prepare.outputs.ver_core }}
+          CRONNER_VER_REDIS: ${{ needs.prepare.outputs.ver_redis }}
+          CRONNER_VER_EFCORE: ${{ needs.prepare.outputs.ver_efcore }}
+        run: |
+          set -euo pipefail
+          # Release notes come from the package's CHANGELOG.md via Directory.Build.props — no override here.
+          dotnet pack "$PROJECT" -c Release -o out
+
+      - name: Push to NuGet
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_KEY }}
+        run: |
+          set -euo pipefail
+          dotnet nuget push "out/*.nupkg" --api-key "$NUGET_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
+          if compgen -G "out/*.snupkg" > /dev/null; then
+            dotnet nuget push "out/*.snupkg" --api-key "$NUGET_KEY" \
+              --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+          fi
+
+      - name: Tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          FLAG=""
+          [[ "$PRERELEASE" == "true" ]] && FLAG="--prerelease"
+          gh release create "$TAG" out/*.nupkg \
+            --target "$GITHUB_SHA" \
+            --title "$KEY v$VERSION" \
+            --generate-notes \
+            $FLAG

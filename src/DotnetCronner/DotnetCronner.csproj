@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+  </ItemGroup>
+
+  <!-- Ship the analyzer inside this package so consumers get build-time [CronnerTask] diagnostics. -->
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"
+                      PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    <None Include="..\DotnetCronner.Analyzers\bin\$(Configuration)\netstandard2.0\DotnetCronner.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner</PackageId>
+    <Description>A simple, free, open-source cron job / background task scheduler for .NET with a pluggable store. Core engine, in-memory store and build-time analyzer.</Description>
+  </PropertyGroup>
+
+</Project>

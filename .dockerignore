@@ -1,0 +1,12 @@
+# Used only by the samples/CronTestApp docker build, whose build context is this repository root.
+# Keeps build/IDE artifacts and secrets out of the image context.
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.git/
+artifacts/
+**/*.user
+**/*.suo
+# The real .env is provided at runtime via docker compose env_file, never baked into the image.
+**/.env

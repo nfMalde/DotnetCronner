@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner\DotnetCronner.csproj" />
+    <ProjectReference Include="..\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner.Stores.EntityFrameworkCore</PackageId>
+    <Description>Entity Framework Core store for DotnetCronner (conditional-UPDATE task claiming, works on any provider).</Description>
+  </PropertyGroup>
+
+</Project>

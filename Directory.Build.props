@@ -1,0 +1,57 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Don't fail the build on missing/partial XML docs for public members. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+
+  <!-- Shared package metadata. Applied unconditionally: non-packable projects opt out via
+       <IsPackable>false</IsPackable>, and the metadata is inert for them. (An IsPackable condition here
+       would be evaluated before the SDK sets IsPackable, so it would be silently skipped.) Each packable
+       project sets its own <PackageId> and <Description>; versions are pipeline-driven (see below). -->
+  <PropertyGroup>
+    <Authors>Malte</Authors>
+    <Product>DotnetCronner</Product>
+    <Copyright>Copyright © Malte</Copyright>
+    <PackageTags>cron;scheduler;background-tasks;jobs;redis</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/nfMalde/DotnetCronner</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/nfMalde/DotnetCronner</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Surface each package's own CHANGELOG.md as its NuGet release notes, so consumers see what changed
+       right on the package page. Each packable project has a CHANGELOG.md next to its .csproj. -->
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)/CHANGELOG.md')">
+    <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/CHANGELOG.md'))</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <!-- Ship the shared README inside every package. -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <!-- Versions are entirely pipeline-driven — csproj files carry NO <Version>. The release workflow
+       exports a CRONNER_VER_<KEY> per package: the released package's computed version, and each of its
+       dependencies' last published version, so cross-package dependency ranges are correct without ever
+       editing a csproj. Local builds (no env) default to 0.0.0. -->
+  <PropertyGroup>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.Abstractions'">$(CRONNER_VER_ABSTRACTIONS)</_CronnerVersion>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner'">$(CRONNER_VER_CORE)</_CronnerVersion>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.Stores.Redis'">$(CRONNER_VER_REDIS)</_CronnerVersion>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.Stores.EntityFrameworkCore'">$(CRONNER_VER_EFCORE)</_CronnerVersion>
+    <Version Condition="'$(_CronnerVersion)' != ''">$(_CronnerVersion)</Version>
+    <Version Condition="'$(_CronnerVersion)' == ''">0.0.0</Version>
+    <PackageVersion>$(Version)</PackageVersion>
+  </PropertyGroup>
+
+</Project>
