@@ -53,8 +53,8 @@ Only the tagged package is packed; its dependencies keep their committed floor `
 is needed to release.
 
 > One-time setup: create a `release` environment (Settings → Environments) and add yourself as a
-> **required reviewer** so the approval gate is active. Put `NUGET_KEY` there as an environment secret for
-> extra protection, or keep it as a repository secret.
+> **required reviewer** so the approval gate is active. Publishing uses **NuGet trusted publishing (OIDC)** —
+> there is no API key to store (see "Publishing credentials" below).
 
 ### Versioning: fully pipeline-driven
 
@@ -70,9 +70,19 @@ in dependency order (`abstractions` → `core` → `redis`/`efcore`) so each dep
 dependents are packed and the range is as tight as possible. (Locally, `dotnet pack` with no pipeline env
 produces `0.0.0` packages — fine for inspection.)
 
-### Required secret
+### Publishing credentials — trusted publishing (no stored key)
 
-- `NUGET_KEY` — a NuGet.org API key with push rights for the DotnetCronner package ids.
+The release workflow authenticates to NuGet.org with **trusted publishing (OIDC)**: GitHub mints a
+short-lived token per run, which the `NuGet/login` step exchanges for a temporary, scoped API key. There is
+**no `NUGET_KEY` secret to store or rotate.** One-time setup:
+
+1. **NuGet.org → Account → Trusted Publishing**: add a policy binding your package id(s) to the GitHub repo
+   `nfMalde/DotnetCronner`, the workflow `release.yml`, and (recommended) the `release` environment.
+2. **Repo → Settings → Secrets and variables → Actions → Variables**: set `NUGET_USER` to your NuGet.org
+   username.
+
+A stored-API-key fallback is kept (commented) in `release.yml` as break-glass if trusted publishing is ever
+unavailable.
 
 ## Using AI tools
 

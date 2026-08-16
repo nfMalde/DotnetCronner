@@ -28,8 +28,9 @@ on:
         type: boolean
         default: false
 
+# Least-privilege default; the publish job widens this for the GitHub Release and the OIDC token.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.event.inputs.package }}
@@ -148,6 +149,9 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     environment: release   # approval gate: configure required reviewers in Settings > Environments
+    permissions:
+      contents: write      # create the tag + GitHub Release
+      id-token: write      # mint the OIDC token that NuGet trusted publishing exchanges for a temp key
     env:
       KEY: ${{ github.event.inputs.package }}
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -175,17 +179,43 @@ jobs:
           # Release notes come from the package's CHANGELOG.md via Directory.Build.props — no override here.
           dotnet pack "$PROJECT" -c Release -o out
 
+      # Trusted Publishing (OIDC) — no stored API key. This step exchanges the job's short-lived GitHub
+      # OIDC token for a temporary NuGet API key, valid for a few minutes and scoped to this repo/workflow
+      # by the policy you create at nuget.org > Account > Trusted Publishing. Requires `id-token: write`
+      # (above) and the repo variable NUGET_USER set to your nuget.org username.
+      - name: NuGet login (trusted publishing)
+        id: nuget
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet
         env:
-          NUGET_KEY: ${{ secrets.NUGET_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: |
           set -euo pipefail
-          dotnet nuget push "out/*.nupkg" --api-key "$NUGET_KEY" \
+          dotnet nuget push "out/*.nupkg" --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json --skip-duplicate
           if compgen -G "out/*.snupkg" > /dev/null; then
-            dotnet nuget push "out/*.snupkg" --api-key "$NUGET_KEY" \
+            dotnet nuget push "out/*.snupkg" --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json --skip-duplicate || true
           fi
+
+      # ── Break-glass fallback: stored API key ─────────────────────────────────────────────────────
+      # If trusted publishing is ever unavailable, add the NUGET_KEY secret and replace the two steps
+      # above with the one below (you can also drop `id-token: write` from this job's permissions):
+      #
+      #   - name: Push to NuGet (API key fallback)
+      #     env:
+      #       NUGET_KEY: ${{ secrets.NUGET_KEY }}
+      #     run: |
+      #       set -euo pipefail
+      #       dotnet nuget push "out/*.nupkg" --api-key "$NUGET_KEY" \
+      #         --source https://api.nuget.org/v3/index.json --skip-duplicate
+      #       if compgen -G "out/*.snupkg" > /dev/null; then
+      #         dotnet nuget push "out/*.snupkg" --api-key "$NUGET_KEY" \
+      #           --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+      #       fi
 
       - name: Tag and GitHub Release
         env:
