@@ -1,6 +1,9 @@
-name: Pull Request Check
+name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
