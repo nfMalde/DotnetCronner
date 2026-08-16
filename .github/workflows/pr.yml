@@ -1,0 +1,31 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build DotnetCronner.slnx -c Release
+
+      - name: Test
+        run: dotnet test DotnetCronner.slnx -c Release --no-build
+
+      - name: Build sample harness (CronTestApp)
+        # The full-feature sample isn't in DotnetCronner.slnx, so build it here to guarantee the examples
+        # always compile against the current library. Pulls in CronTestApp.ExternalJobs via project reference.
+        run: dotnet build samples/CronTestApp/CronTestApp/CronTestApp.csproj -c Release

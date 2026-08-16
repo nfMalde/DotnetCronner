@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner.Abstractions</PackageId>
+    <Description>Interfaces, models and the [CronnerTask] attribute for DotnetCronner — implement these to plug in your own store.</Description>
+  </PropertyGroup>
+
+</Project>

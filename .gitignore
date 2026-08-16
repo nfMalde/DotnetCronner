@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+project.lock.json
+artifacts/
+
+## Rider / VS
+.vs/
+.idea/
+*.suo
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+coverage*.json
+*.trx
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Local env files (commit the .env.example instead of the real .env)
+.env

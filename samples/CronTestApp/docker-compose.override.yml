@@ -1,0 +1,9 @@
+services:
+  crontestapp:
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      # Watch the scheduler work: every claim, run and hook shows up in `docker compose logs -f crontestapp`.
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__DotnetCronner: Debug
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning

@@ -1,0 +1,92 @@
+@host = http://localhost:8080
+# F5 / dotnet run instead of docker compose? Use the Kestrel port:
+# @host = http://localhost:5170
+
+### What is this app running right now (store, cache, discovery, options)?
+GET {{host}}/config
+Accept: application/json
+
+### Every registered task with its state, priority and next run
+GET {{host}}/tasks
+Accept: application/json
+
+### Only the scheduled ones (states: Idle, Scheduled, Queued, Running, Completed, Failed, Cancelled)
+GET {{host}}/tasks?state=Scheduled&limit=100
+Accept: application/json
+
+### A single task
+GET {{host}}/tasks/attr:heartbeat
+Accept: application/json
+
+### Trigger the manual attribute task (it has no cron string, so this is the only way it runs)
+POST {{host}}/tasks/attr:manual/run
+
+### Trigger the manual lambda task
+POST {{host}}/tasks/lambda:manual/run
+
+# ─── Execution lock: keepalive, loss, cancellation ──────────────────────────────────────────────
+
+### Keepalive: a 35s run with LockTtl=20s — expect OnLockAcquire, ~3x OnKeepAlive, then OnLockRelease
+POST {{host}}/tasks/lock:keepalive/run
+
+### ... watch the lock events
+GET {{host}}/activity?take=20&jobId=lock:keepalive
+Accept: application/json
+
+### Measured renewal cadence vs. the expected LockTtl/2.
+### Set CRONNER_SLOW_KEEPALIVE_MS above LockTtl/2 (e.g. 15000) and run lock:keepalive again:
+### the gaps must stay at LockTtl/2, because keepalive hooks are fired detached from the renewal loop.
+GET {{host}}/locks
+Accept: application/json
+
+### Lock loss, step 1: start the stealable long run
+POST {{host}}/tasks/lock:stealable/run
+
+### Lock loss, step 2: steal its claim — the next keepalive fails, the run is cancelled, OnLockLost fires
+POST {{host}}/tasks/lock:stealable/steal-lock
+
+### ... watch it stand down
+GET {{host}}/activity?take=20&jobId=lock:stealable
+Accept: application/json
+
+### Cooperative cancellation: start it ...
+POST {{host}}/tasks/cancel:long-runner/run
+
+### ... and cancel it (watch the OnCancel hook in /activity and the logs)
+POST {{host}}/tasks/cancel:long-runner/cancel
+
+# ─── Progress reporting ─────────────────────────────────────────────────────────────────────────
+
+### Live progress, rebuilt purely from the progress hooks (total + per-scope)
+GET {{host}}/progress
+Accept: application/json
+
+### The progress job's own trace (scopes opening, reporting, closing)
+GET {{host}}/activity?take=25&jobId=progress:import
+Accept: application/json
+
+### Per-schedule hooks (WithHook<T>, expression hooks, delegate) — only ever fire for this task
+GET {{host}}/activity?take=25&jobId=progress:reindex
+Accept: application/json
+
+### What the expression-style hooks recorded
+GET {{host}}/activity?take=25&jobId=hooks:expression
+Accept: application/json
+
+# ─── General observation ────────────────────────────────────────────────────────────────────────
+
+### What the jobs actually did, newest first
+GET {{host}}/activity?take=50
+Accept: application/json
+
+### Concurrency policies side by side: drop / queue / parallel
+GET {{host}}/activity?take=40&jobId=conc:parallel
+Accept: application/json
+
+### Hook-fed counters per task, including the lock events
+GET {{host}}/metrics
+Accept: application/json
+
+### Liveness
+GET {{host}}/healthz
+Accept: application/json

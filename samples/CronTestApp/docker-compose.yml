@@ -1,0 +1,71 @@
+name: cronner-testapp
+
+services:
+  crontestapp:
+    image: ${DOCKER_REGISTRY-}crontestapp
+    build:
+      # DotnetCronner is consumed by project reference, so the build context is the repository root
+      # (two levels up), giving the build both src/ and this sample under one tree.
+      context: ../../
+      dockerfile: samples/CronTestApp/CronTestApp/Dockerfile
+    # .env drives the app (store selection, scheduler options) exactly as it drives compose itself.
+    env_file:
+      - .env
+    environment:
+      # Container-internal values that must beat the host-oriented defaults in .env.
+      ASPNETCORE_HTTP_PORTS: "8080"
+      CRONNER_REDIS: "redis:6379"
+      CRONNER_POSTGRES: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-cronner};Username=${POSTGRES_USER:-cronner};Password=${POSTGRES_PASSWORD:-cronner}"
+      CRONNER_CUSTOM_STORE_FILE: "/data/cronner-store.json"
+    ports:
+      - "${APP_HTTP_PORT:-8080}:8080"
+    volumes:
+      # Keeps the custom JSON store across container restarts.
+      - cronner-store:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Backing store for CRONNER_STORE=redis and provider for CRONNER_CACHE=redis.
+  redis:
+    image: redis:8.10
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # Backing store for CRONNER_STORE=ef-postgres and ef-postgres-appcontext.
+  postgres:
+    image: postgres:18.6
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cronner}
+      POSTGRES_USER: ${POSTGRES_USER:-cronner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cronner}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cronner} -d ${POSTGRES_DB:-cronner}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  cronner-store:
+  redis-data:
+  postgres-data:

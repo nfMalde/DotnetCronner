@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>eba32ec6-ca7a-4967-981b-0a991b7fd2d1</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerComposeProjectPath>..\docker-compose.dcproj</DockerComposeProjectPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.24.1-preview.1" />
+    <!-- EF Core provider for the ef-postgres stores (EF Core itself comes from the Cronner EF store). -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\DotnetCronner.Stores.EntityFrameworkCore\DotnetCronner.Stores.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\..\src\DotnetCronner.Stores.Redis\DotnetCronner.Stores.Redis.csproj" />
+    <ProjectReference Include="..\..\..\src\DotnetCronner\DotnetCronner.csproj" />
+    <!-- Referenced as an analyzer (not as a library) so the build-time DC0001/DC0002 cron diagnostics
+         light up here exactly as they do for consumers of the NuGet package. -->
+    <ProjectReference Include="..\..\..\src\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"
+                      PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    <!-- A second assembly with [CronnerTask] methods, to exercise AutoDiscoverFromAssembly. -->
+    <ProjectReference Include="..\CronTestApp.ExternalJobs\CronTestApp.ExternalJobs.csproj" />
+  </ItemGroup>
+
+</Project>

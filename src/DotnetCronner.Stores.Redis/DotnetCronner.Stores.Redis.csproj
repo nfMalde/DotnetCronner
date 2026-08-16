@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner\DotnetCronner.csproj" />
+    <ProjectReference Include="..\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" Version="3.1.13" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner.Stores.Redis</PackageId>
+    <Description>Redis store and Redis second-level cache for DotnetCronner (crash-safe task claiming via per-job locks).</Description>
+  </PropertyGroup>
+
+</Project>

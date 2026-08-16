@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotnetCronner\DotnetCronner.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+    <!-- Run the DotnetCronner analyzer against this project (analyzers don't flow through project references). -->
+    <ProjectReference Include="..\..\src\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"
+                      PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
