@@ -5,12 +5,17 @@ namespace DotnetCronner;
 /// custom stores may reuse it instead of hand-rolling their own record. It is deliberately a plain,
 /// mutable class with a parameterless constructor and <c>virtual</c> properties, so ORMs that build
 /// lazy-loading proxies (e.g. NHibernate) can subclass it; EF Core and Dapper work with it unchanged.
-/// You can also derive from it to add your own columns.
+/// You can also derive from it to add your own columns and override the virtual <see cref="ToDomain"/> /
+/// <see cref="Apply"/> to map them.
 /// </summary>
 public class CronnerJobEntity
 {
-    /// <summary>Stable unique id (primary key).</summary>
-    public virtual string Id { get; set; } = default!;
+    /// <summary>
+    /// The task's stable string id (the value of <see cref="CronnerJob.Id"/>) and the primary key. Named
+    /// <c>TaskId</c> rather than <c>Id</c> on purpose, so it never collides with an <c>int</c>/<c>long</c>
+    /// surrogate-key convention on your own entities, base classes, or automapper.
+    /// </summary>
+    public virtual string TaskId { get; set; } = default!;
 
     /// <summary>Fully qualified task name.</summary>
     public virtual string Name { get; set; } = default!;
@@ -51,10 +56,13 @@ public class CronnerJobEntity
     /// <summary>Record update time (UTC).</summary>
     public virtual DateTimeOffset UpdatedUtc { get; set; }
 
-    /// <summary>Maps this entity to the domain model.</summary>
-    public CronnerJob ToDomain() => new()
+    /// <summary>
+    /// Maps this entity to the domain model. Override in a subclass (call <c>base.ToDomain()</c>) to add
+    /// custom conversions; it dispatches virtually, so EF-materialized subclasses use your override.
+    /// </summary>
+    public virtual CronnerJob ToDomain() => new()
     {
-        Id = Id,
+        Id = TaskId,
         Name = Name,
         CronExpression = CronExpression,
         State = State,
@@ -73,13 +81,16 @@ public class CronnerJobEntity
     /// <summary>Creates an entity from a domain <see cref="CronnerJob"/>.</summary>
     public static CronnerJobEntity From(CronnerJob job)
     {
-        var entity = new CronnerJobEntity { Id = job.Id };
+        var entity = new CronnerJobEntity { TaskId = job.Id };
         entity.Apply(job);
         return entity;
     }
 
-    /// <summary>Copies the fields of <paramref name="job"/> onto this entity.</summary>
-    public void Apply(CronnerJob job)
+    /// <summary>
+    /// Copies the fields of <paramref name="job"/> onto this entity. Override in a subclass (call
+    /// <c>base.Apply(job)</c>) to also populate your own columns — e.g. stamp a tenant/correlation id.
+    /// </summary>
+    public virtual void Apply(CronnerJob job)
     {
         Name = job.Name;
         CronExpression = job.CronExpression;

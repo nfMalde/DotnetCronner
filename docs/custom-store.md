@@ -214,7 +214,13 @@ public sealed class UnitOfWorkCronnerStore : ICronnerStore
 Your persistence type just mirrors `CronnerJob` and maps both ways. Abstractions already ships a
 ready-made one you can reuse or subclass — **`CronnerJobEntity`** — a plain, mutable class with
 `virtual` properties (so ORMs like NHibernate can proxy it) and `ToDomain()` / `From(job)` / `Apply(job)`
-helpers. Use it instead of the hand-rolled `CronnerJobRecord` below if it fits your data layer:
+helpers. Its key is a **`string TaskId`** (the value of `CronnerJob.Id`) — deliberately *not* named `Id`,
+so it never clashes with an `int`/`long` surrogate-key convention on your own entities or base classes.
+Use it instead of the hand-rolled `CronnerJobRecord` below if it fits your data layer.
+
+The only hard requirement is that your persistence type round-trips the task's **string** id to
+`CronnerJob.Id`. So if your conventions demand a surrogate PK, give your record its own `int`/`long` `Id`
+and store the task id in a separate (unique) string column — the store maps between the two:
 
 ```csharp
 public sealed class CronnerJobRecord

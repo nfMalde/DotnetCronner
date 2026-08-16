@@ -6,6 +6,11 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** the `CronnerJobs` primary-key column follows `CronnerJobEntity.TaskId` (renamed from `Id`),
+  so the key column is now `TaskId`. Freshly created databases are correct automatically; an existing table
+  needs a column rename migration.
+
 ## [0.0.1] - 2026-08-16
 
 ### Added
