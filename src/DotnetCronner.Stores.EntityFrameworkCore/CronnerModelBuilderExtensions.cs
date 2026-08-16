@@ -16,8 +16,8 @@ public static class CronnerModelBuilderExtensions
 
         modelBuilder.Entity<CronnerJobEntity>(entity =>
         {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasMaxLength(256);
+            entity.HasKey(e => e.TaskId);
+            entity.Property(e => e.TaskId).HasMaxLength(256);
             entity.Property(e => e.Name).HasMaxLength(512);
             entity.HasIndex(e => new { e.State, e.NextRunUtc });
             entity.HasIndex(e => e.NextRunUtc);

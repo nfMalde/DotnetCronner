@@ -25,7 +25,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var entity = await context.CronnerJobs.AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == id, cancellationToken).ConfigureAwait(false);
+            .FirstOrDefaultAsync(e => e.TaskId == id, cancellationToken).ConfigureAwait(false);
         return entity?.ToDomain();
     }
 
@@ -40,7 +40,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
 
         var entities = await query
             .OrderBy(e => e.CreatedUtc)
-            .ThenBy(e => e.Id)
+            .ThenBy(e => e.TaskId)
             .Skip(Math.Max(0, offset))
             .Take(Math.Max(0, limit))
             .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -53,10 +53,10 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
     {
         job.UpdatedUtc = DateTimeOffset.UtcNow;
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var entity = await context.CronnerJobs.FirstOrDefaultAsync(e => e.Id == job.Id, cancellationToken).ConfigureAwait(false);
+        var entity = await context.CronnerJobs.FirstOrDefaultAsync(e => e.TaskId == job.Id, cancellationToken).ConfigureAwait(false);
         if (entity is null)
         {
-            entity = new CronnerJobEntity { Id = job.Id };
+            entity = new CronnerJobEntity { TaskId = job.Id };
             entity.Apply(job);
             context.CronnerJobs.Add(entity);
         }
@@ -72,7 +72,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
     public async Task RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var entity = await context.CronnerJobs.FirstOrDefaultAsync(e => e.Id == id, cancellationToken).ConfigureAwait(false);
+        var entity = await context.CronnerJobs.FirstOrDefaultAsync(e => e.TaskId == id, cancellationToken).ConfigureAwait(false);
         if (entity is null)
             return;
 
@@ -101,7 +101,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
             // Atomic claim: the UPDATE re-asserts eligibility, so it only wins if the row is still free.
             // If another instance (or an earlier iteration) took it, ExecuteUpdate affects 0 rows.
             var affected = await context.CronnerJobs
-                .Where(e => e.Id == candidate.Id && e.State != CronnerTaskState.Cancelled &&
+                .Where(e => e.TaskId == candidate.TaskId && e.State != CronnerTaskState.Cancelled &&
                             e.NextRunUtc != null && e.NextRunUtc <= now &&
                             (e.LockOwner == null || e.LockedUntilUtc == null || e.LockedUntilUtc < now))
                 .ExecuteUpdateAsync(setters => setters
@@ -133,7 +133,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
         // Conditional on ownership: the UPDATE only touches the row while this worker still holds the lock,
         // so a claim that was already reclaimed by someone else cannot be resurrected.
         var affected = await context.CronnerJobs
-            .Where(e => e.Id == id && e.LockOwner == owner)
+            .Where(e => e.TaskId == id && e.LockOwner == owner)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(e => e.LockedUntilUtc, lockedUntil)
                 .SetProperty(e => e.UpdatedUtc, DateTimeOffset.UtcNow), cancellationToken)
