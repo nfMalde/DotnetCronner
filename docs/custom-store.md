@@ -17,11 +17,17 @@ public interface ICronnerStore
     // Optional per-run lifecycle (default no-op) — open/close a per-run session if your store needs one.
     Task OnStartAsync(CronnerJob job, CancellationToken ct = default) => Task.CompletedTask;
     Task OnCloseAsync(CronnerJob job, CancellationToken ct = default) => Task.CompletedTask;
+
+    // Optional (default no-op) — implement for one-off retention and persisted progress.
+    Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken ct = default) => Task.CompletedTask;
+    Task UpdateProgressAsync(string id, decimal progress, CancellationToken ct = default) => Task.CompletedTask;
 }
 ```
 
-`CronnerJob` is a plain, serializable record (Id, Name, CronExpression, State, Priority, NextRunUtc,
-LastRunUtc, RunCount, RetryCount, LastError, LockOwner, LockedUntilUtc, CreatedUtc, UpdatedUtc). You map it
+`CronnerJob` is a plain, serializable record (Id, Name, Kind, DefinitionId, Payload, PayloadType, Progress,
+CronExpression, State, Priority, NextRunUtc, LastRunUtc, RunCount, RetryCount, LastError, LockOwner,
+LockedUntilUtc, CreatedUtc, UpdatedUtc). One-off enqueued instances have `Kind == OneOff`, a unique `Id`, a
+`DefinitionId` pointing at their template, and a JSON `Payload`. You map it
 to and from your own persistence type.
 
 ## Three things to get right
@@ -227,6 +233,11 @@ public sealed class CronnerJobRecord
 {
     public string Id { get; set; } = default!;
     public string Name { get; set; } = default!;
+    public CronnerJobKind Kind { get; set; }        // Recurring or OneOff
+    public string? DefinitionId { get; set; }       // one-off → the template id it runs
+    public string? Payload { get; set; }            // one-off → JSON payload
+    public string? PayloadType { get; set; }
+    public decimal Progress { get; set; }           // last reported total progress
     public string? CronExpression { get; set; }
     public CronnerTaskState State { get; set; }
     public CronnerTaskPriority Priority { get; set; }
@@ -242,17 +253,19 @@ public sealed class CronnerJobRecord
 
     public CronnerJob ToDomain() => new()
     {
-        Id = Id, Name = Name, CronExpression = CronExpression, State = State, Priority = Priority,
-        NextRunUtc = NextRunUtc, LastRunUtc = LastRunUtc, RunCount = RunCount, RetryCount = RetryCount,
-        LastError = LastError, LockOwner = LockOwner, LockedUntilUtc = LockedUntilUtc,
+        Id = Id, Name = Name, Kind = Kind, DefinitionId = DefinitionId, Payload = Payload,
+        PayloadType = PayloadType, Progress = Progress, CronExpression = CronExpression, State = State,
+        Priority = Priority, NextRunUtc = NextRunUtc, LastRunUtc = LastRunUtc, RunCount = RunCount,
+        RetryCount = RetryCount, LastError = LastError, LockOwner = LockOwner, LockedUntilUtc = LockedUntilUtc,
         CreatedUtc = CreatedUtc, UpdatedUtc = UpdatedUtc,
     };
 
     public static CronnerJobRecord From(CronnerJob j) => new()
     {
-        Id = j.Id, Name = j.Name, CronExpression = j.CronExpression, State = j.State, Priority = j.Priority,
-        NextRunUtc = j.NextRunUtc, LastRunUtc = j.LastRunUtc, RunCount = j.RunCount, RetryCount = j.RetryCount,
-        LastError = j.LastError, LockOwner = j.LockOwner, LockedUntilUtc = j.LockedUntilUtc,
+        Id = j.Id, Name = j.Name, Kind = j.Kind, DefinitionId = j.DefinitionId, Payload = j.Payload,
+        PayloadType = j.PayloadType, Progress = j.Progress, CronExpression = j.CronExpression, State = j.State,
+        Priority = j.Priority, NextRunUtc = j.NextRunUtc, LastRunUtc = j.LastRunUtc, RunCount = j.RunCount,
+        RetryCount = j.RetryCount, LastError = j.LastError, LockOwner = j.LockOwner, LockedUntilUtc = j.LockedUntilUtc,
         CreatedUtc = j.CreatedUtc, UpdatedUtc = j.UpdatedUtc,
     };
 }
@@ -281,4 +294,8 @@ concurrency modes all run unchanged on top of your store.
   caller no longer owns the lock.
 - `OnStartAsync` / `OnCloseAsync` are optional — implement them only for a per-run session, and make sure
   `OnCloseAsync` disposes/commits what `OnStartAsync` opened.
-- Map every `CronnerJob` field so nothing is silently dropped across a restart.
+- Map every `CronnerJob` field (incl. `Kind`, `DefinitionId`, `Payload`, `PayloadType`, `Progress`) so
+  nothing is silently dropped across a restart.
+- `PruneCompletedOneOffsAsync` / `UpdateProgressAsync` are optional (default no-ops) — implement them for
+  one-off retention and persisted progress. `UpdateProgressAsync` must touch *only* `Progress` (never the
+  lock fields), so it can't race the keepalive.

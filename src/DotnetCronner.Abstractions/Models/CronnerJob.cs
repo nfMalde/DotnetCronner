@@ -7,11 +7,29 @@ namespace DotnetCronner;
 /// </summary>
 public sealed class CronnerJob
 {
-    /// <summary>Stable unique identifier of the task.</summary>
+    /// <summary>Stable unique identifier of the task (for a one-off instance, a generated per-enqueue id).</summary>
     public required string Id { get; set; }
 
     /// <summary>Human readable name, typically the fully qualified <c>Type.Method</c>.</summary>
     public required string Name { get; set; }
+
+    /// <summary>Whether this is a recurring definition or a one-off enqueued instance. Defaults to <see cref="CronnerJobKind.Recurring"/>.</summary>
+    public CronnerJobKind Kind { get; set; } = CronnerJobKind.Recurring;
+
+    /// <summary>
+    /// For a one-off instance, the id of the registered task definition whose method it runs. Recurring
+    /// jobs leave this <c>null</c> and are resolved by <see cref="Id"/>.
+    /// </summary>
+    public string? DefinitionId { get; set; }
+
+    /// <summary>The JSON-serialized payload for a one-off instance, or <c>null</c>.</summary>
+    public string? Payload { get; set; }
+
+    /// <summary>The payload's declared type name (for diagnostics and deserialization), or <c>null</c>.</summary>
+    public string? PayloadType { get; set; }
+
+    /// <summary>The most recent total progress reported (0..1 by convention). Persisted so the store can surface it.</summary>
+    public decimal Progress { get; set; }
 
     /// <summary>
     /// The cron expression that drives scheduling, or <c>null</c> for a manual / one-shot task that

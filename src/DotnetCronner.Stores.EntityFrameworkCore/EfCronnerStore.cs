@@ -141,4 +141,33 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
 
         return affected > 0;
     }
+
+    /// <inheritdoc />
+    public async Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        var stale = await context.CronnerJobs
+            .Where(e => e.Kind == CronnerJobKind.OneOff && e.DefinitionId == definitionId &&
+                        (e.State == CronnerTaskState.Completed || e.State == CronnerTaskState.Failed))
+            .OrderByDescending(e => e.UpdatedUtc)
+            .Skip(Math.Max(0, keepNewest))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        if (stale.Count == 0)
+            return;
+
+        context.CronnerJobs.RemoveRange(stale);
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await context.CronnerJobs
+            .Where(e => e.TaskId == id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.Progress, progress), cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

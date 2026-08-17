@@ -4,4 +4,14 @@
   <Project Path="docker-compose.dcproj">
     <Build />
   </Project>
+  <!-- The library projects are consumed by ProjectReference. Including them here (not just referencing them
+       by path) makes VS treat them as first-class members, so it rebuilds them from source whenever you
+       build/F5 CronTestApp — no stale-DLL surprises. DotnetCronner.slnx stays lean for CI/release. -->
+  <Folder Name="/src/">
+    <Project Path="../../src/DotnetCronner.Abstractions/DotnetCronner.Abstractions.csproj" />
+    <Project Path="../../src/DotnetCronner/DotnetCronner.csproj" />
+    <Project Path="../../src/DotnetCronner.Analyzers/DotnetCronner.Analyzers.csproj" />
+    <Project Path="../../src/DotnetCronner.Stores.EntityFrameworkCore/DotnetCronner.Stores.EntityFrameworkCore.csproj" />
+    <Project Path="../../src/DotnetCronner.Stores.Redis/DotnetCronner.Stores.Redis.csproj" />
+  </Folder>
 </Solution>

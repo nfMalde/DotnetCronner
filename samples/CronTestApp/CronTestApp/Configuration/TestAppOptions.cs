@@ -103,6 +103,12 @@ public sealed class TestAppOptions
     /// <summary>File the custom JSON store persists to.</summary>
     public required string CustomStoreFile { get; init; }
 
+    /// <summary>Keep only the newest N finished one-off (enqueued) instances per definition; 0 keeps them all.</summary>
+    public int OneOffRetention { get; init; }
+
+    /// <summary>Pins the keepalive / <c>OnKeepAlive</c> cadence, or <c>null</c> to use the default <c>LockTtl</c>/2.</summary>
+    public TimeSpan? KeepAliveInterval { get; init; }
+
     /// <summary>
     /// How long the deliberately slow <c>OnKeepAlive</c> hook blocks, or <see cref="TimeSpan.Zero"/> to
     /// leave it out. Set it above <c>LockTtl</c>/2 to prove that a slow hook cannot stretch the renewal
@@ -157,6 +163,10 @@ public sealed class TestAppOptions
         PostgresConnection = ReadString(
             configuration, "CRONNER_POSTGRES", "Host=localhost;Port=5432;Database=cronner;Username=cronner;Password=cronner"),
         CustomStoreFile = ReadString(configuration, "CRONNER_CUSTOM_STORE_FILE", "cronner-store.json"),
+        OneOffRetention = ReadInt(configuration, "CRONNER_ONEOFF_RETENTION", 20),
+        KeepAliveInterval = ReadInt(configuration, "CRONNER_KEEPALIVE_SECONDS", 0) is var kai && kai > 0
+            ? TimeSpan.FromSeconds(kai)
+            : null,
         SlowKeepAliveDelay = TimeSpan.FromMilliseconds(ReadInt(configuration, "CRONNER_SLOW_KEEPALIVE_MS", 0)),
     };
 
@@ -173,7 +183,8 @@ public sealed class TestAppOptions
         lockTtl = LockTtl.ToString(),
         maxRetries = MaxRetries,
         retryDelay = RetryDelay.ToString(),
-        keepAliveInterval = TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2)).ToString(),
+        keepAliveInterval = (KeepAliveInterval ?? TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2))).ToString(),
+        oneOffRetention = OneOffRetention == 0 ? "keep all" : OneOffRetention.ToString(),
         slowKeepAliveHook = SlowKeepAliveDelay > TimeSpan.Zero ? SlowKeepAliveDelay.ToString() : "off",
         redisConnection = UsesRedis ? RedisConnection : null,
         redisKeyPrefix = UsesRedis ? RedisKeyPrefix : null,

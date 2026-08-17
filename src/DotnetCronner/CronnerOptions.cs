@@ -25,6 +25,20 @@ public sealed class CronnerOptions
     /// </summary>
     public TimeSpan LockTtl { get; set; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// How often a running task's execution lock is renewed (and the <c>OnKeepAlive</c> hook fired). When
+    /// <c>null</c> (the default), the cadence is <see cref="LockTtl"/>/2. Set this to pin the keepalive
+    /// frequency independently — keep it comfortably below <see cref="LockTtl"/> so the lock never lapses
+    /// between renewals.
+    /// </summary>
+    public TimeSpan? KeepAliveInterval { get; set; }
+
+    /// <summary>
+    /// How many finished one-off (enqueued) rows to keep per definition; older ones are pruned after each
+    /// one-off completes. <c>0</c> (the default) keeps them all — retention is off.
+    /// </summary>
+    public int OneOffRetentionCount { get; set; }
+
     /// <summary>Number of automatic retries after a failed execution. Defaults to 0 (no retry).</summary>
     public int DefaultMaxRetries { get; set; }
 

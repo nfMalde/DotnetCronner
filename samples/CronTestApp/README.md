@@ -9,6 +9,10 @@ This sample lives in the DotnetCronner repo under `samples/CronTestApp`, and con
 **project reference** to `..\..\..\src`, so you are always testing the working copy — no packing, no NuGet
 feed.
 
+**Requirements: Docker + Docker Compose.** This is a **Docker Compose project** (app + Redis + PostgreSQL,
+with the repo root as the build context), not a standalone `dotnet run` app — Compose is what wires the
+scheduler up to Redis/PostgreSQL and points the app at them. Run it with `docker compose`.
+
 Two knobs decide everything:
 
 * **`.env`** — which store, which cache, which discovery mode, which DI mode, plus the scheduler options.
@@ -21,33 +25,29 @@ cd samples/CronTestApp
 copy .env.example .env      # cp .env.example .env  (bash)
 ```
 
-The template defaults to `CRONNER_STORE=memory`, so the app runs with no external services out of the box.
+The template defaults to `CRONNER_STORE=memory`, so `docker compose up` works without configuring Redis or
+PostgreSQL (Compose still starts them, they're just unused until you switch `CRONNER_STORE`).
 
 ---
 
 ## Run it
 
 ```powershell
-# From samples/CronTestApp:
-
-# Everything in Docker (app + redis + postgres) — build context is the repo root, set in docker-compose.yml
+# From samples/CronTestApp (after copying .env.example → .env):
 docker compose up -d --build
 curl http://localhost:8080/config
-
-# Or: infrastructure in Docker, app from Visual Studio / CLI (F5 or `dotnet run`)
-docker compose up -d redis postgres
-dotnet run --project CronTestApp        # http://localhost:5170
 ```
 
-`.env` is read by docker compose **and** by the app itself (`DotEnvFile`), so both paths behave the same.
-Real environment variables always win over the file, which is how compose points the app at `redis:6379` /
-`Host=postgres` inside the network while the file keeps `localhost` for local runs.
+That builds and starts everything (app + Redis + PostgreSQL). The app listens on `http://localhost:8080`.
 
-After changing `.env`:
+`.env` is read by docker compose **and** by the app itself (`DotEnvFile`). Real environment variables win
+over the file, which is how compose points the app at `redis:6379` / `Host=postgres` inside the network
+while the file keeps `localhost` values for reference.
+
+After changing `.env`, recreate the app container so it picks the new values up:
 
 ```powershell
-docker compose up -d --force-recreate crontestapp    # containerised
-# or just restart the app when running it locally
+docker compose up -d --force-recreate crontestapp
 ```
 
 ---

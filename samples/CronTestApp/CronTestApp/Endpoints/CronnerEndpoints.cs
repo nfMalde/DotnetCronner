@@ -1,4 +1,5 @@
 using CronTestApp.Configuration;
+using CronTestApp.Jobs;
 using CronTestApp.Services;
 using DotnetCronner;
 
@@ -20,9 +21,11 @@ public static class CronnerEndpoints
             endpoints = new[]
             {
                 "GET  /config                  — the active .env-driven configuration",
-                "GET  /tasks?state=&offset=&limit=  — every registered task",
+                "GET  /tasks?state=&offset=&limit=  — persisted task rows",
+                "GET  /registered              — every registered definition (incl. never-run / manual)",
                 "GET  /tasks/{id}              — one task",
-                "POST /tasks/{id}/run          — trigger a task now (the only way to run manual tasks)",
+                "POST /tasks/{id}/run          — TriggerNow: run a task immediately (works for manual tasks)",
+                "POST /enqueue/notify          — enqueue a one-off with a typed payload (body: {to,message,attempt})",
                 "POST /tasks/{id}/cancel       — cancel a running task and unschedule it",
                 "POST /tasks/{id}/steal-lock   — steal a running task's claim to force OnLockLost",
                 "GET  /activity?take=&jobId=   — what the jobs actually did (newest first)",
@@ -38,6 +41,9 @@ public static class CronnerEndpoints
         app.MapGet("/tasks", async (ICronnerClient client, CronnerTaskState? state, int offset = 0, int limit = 100) =>
             Results.Ok(await client.GetTasksAsync(state, offset, limit)));
 
+        // Every registered definition, whether or not it has ever run — includes manual / enqueue-only jobs.
+        app.MapGet("/registered", (ICronnerClient client) => Results.Ok(client.GetRegisteredTasks()));
+
         app.MapGet("/tasks/{id}", async (ICronnerClient client, string id) =>
             await client.GetTaskByIdAsync(id) is { } task
                 ? Results.Ok(task)
@@ -47,8 +53,25 @@ public static class CronnerEndpoints
         {
             try
             {
-                await client.ScheduleTaskAsync(id);
+                await client.TriggerNowAsync(id);   // unambiguous "run now"
                 return Results.Accepted($"/tasks/{id}", new { triggered = id });
+            }
+            catch (CronnerTaskNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        });
+
+        // Enqueue a one-off instance of the 'enqueue:notify' definition, carrying a typed payload.
+        // The body is optional here: a bodyless POST falls back to a demo payload so the endpoint always
+        // enqueues something valid (never a null payload, which would NRE inside the job).
+        app.MapPost("/enqueue/notify", async (ICronnerClient client, NotificationPayload? payload) =>
+        {
+            payload ??= new NotificationPayload("ops@example.com", "hello from a one-off", 1);
+            try
+            {
+                var instanceId = await client.EnqueueAsync("enqueue:notify", payload);
+                return Results.Accepted($"/tasks/{instanceId}", new { enqueued = instanceId, payload });
             }
             catch (CronnerTaskNotFoundException ex)
             {

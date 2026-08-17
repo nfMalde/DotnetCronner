@@ -72,4 +72,17 @@ public sealed class CachedCronnerStore : ICronnerStore
     /// <inheritdoc />
     public Task OnCloseAsync(CronnerJob job, CancellationToken cancellationToken = default) =>
         _inner.OnCloseAsync(job, cancellationToken);
+
+    /// <inheritdoc />
+    public Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default) =>
+        _inner.PruneCompletedOneOffsAsync(definitionId, keepNewest, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default)
+    {
+        await _inner.UpdateProgressAsync(id, progress, cancellationToken).ConfigureAwait(false);
+        var job = await _inner.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (job is not null)
+            await _cache.SetAsync(job, cancellationToken).ConfigureAwait(false);
+    }
 }

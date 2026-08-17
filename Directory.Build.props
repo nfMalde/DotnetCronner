@@ -29,10 +29,13 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
-  <!-- Surface each package's own CHANGELOG.md as its NuGet release notes, so consumers see what changed
-       right on the package page. Each packable project has a CHANGELOG.md next to its .csproj. -->
-  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)/CHANGELOG.md')">
-    <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/CHANGELOG.md'))</PackageReleaseNotes>
+  <!-- NuGet release notes are injected by the release pipeline: ONLY the version being released, and
+       flattened to plain text (NuGet's release-notes field does not render Markdown, so embedding the raw
+       CHANGELOG.md there shows literal '##'/backticks — and embedding the whole file shows every version).
+       The GitHub Release gets the Markdown form instead. See .github/scripts/release-notes.sh. Local builds
+       (no CRONNER_RELEASE_NOTES) ship no notes. -->
+  <PropertyGroup Condition="'$(CRONNER_RELEASE_NOTES)' != ''">
+    <PackageReleaseNotes>$(CRONNER_RELEASE_NOTES)</PackageReleaseNotes>
   </PropertyGroup>
 
   <!-- Ship the shared README inside every package. -->
