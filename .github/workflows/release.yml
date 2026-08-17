@@ -27,13 +27,23 @@ on:
         description: Prerelease? (appends -preview.<run> to an auto-bumped version; for an explicit version include the suffix yourself)
         type: boolean
         default: false
+      abstractions_dependency:
+        description: DotnetCronner.Abstractions dependency floor ('latest' = its last published tag; or type a version, e.g. 0.0.3)
+        required: false
+        default: latest
+      core_dependency:
+        description: DotnetCronner (core) dependency floor ('latest' = its last published tag; or type a version)
+        required: false
+        default: latest
 
 # Least-privilege default; the publish job widens this for the GitHub Release and the OIDC token.
 permissions:
   contents: read
 
+# One release at a time across ALL packages (not per-package), so a dependent can never run while a
+# dependency's release is still in flight — its tag is created at the end of that run.
 concurrency:
-  group: release-${{ github.event.inputs.package }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -112,6 +122,38 @@ jobs:
             printf '%s' "$v"
           }
           VER_ABS="$(ver_of abstractions)"; VER_CORE="$(ver_of core)"; VER_REDIS="$(ver_of redis)"; VER_EF="$(ver_of efcore)"
+
+          # Optional explicit dependency floors override the last-published-tag lookup — pin deps for a
+          # coordinated release so the result never depends on tag timing. 'latest' (the default) or blank
+          # means "use the last published tag".
+          DEP_ABS="${{ github.event.inputs.abstractions_dependency }}"
+          DEP_CORE="${{ github.event.inputs.core_dependency }}"
+          [[ "$DEP_ABS" == "latest" ]] && DEP_ABS=""
+          [[ "$DEP_CORE" == "latest" ]] && DEP_CORE=""
+          [[ -n "$DEP_ABS" ]] && VER_ABS="$DEP_ABS"
+          [[ -n "$DEP_CORE" ]] && VER_CORE="$DEP_CORE"
+
+          # Guard against the release-order race: if a dependency's CHANGELOG documents a newer version than
+          # the floor about to be pinned (it has unreleased changes) and you did not pin it explicitly, fail
+          # — release that dependency first (wait for its run to finish, which creates the tag), or pass its
+          # *_dependency input.
+          changelog_latest() { grep -oE "^## \[[0-9]+\.[0-9]+\.[0-9]+" "$1/CHANGELOG.md" 2>/dev/null | sed -E 's/^## \[//' | sort -V | tail -n1; }
+          version_gt() { [[ "$1" != "$2" ]] && [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" == "$1" ]]; }
+          check_dep() {  # <name> <pinned> <override> <changelog-dir>
+            [[ -n "$3" ]] && return 0
+            local declared; declared="$(changelog_latest "$4")"
+            if [[ -n "$declared" ]] && version_gt "$declared" "$2"; then
+              echo "::error::Dependency '$1' documents [$declared] in its CHANGELOG but the floor to be pinned is $2 (its latest tag) — it has unreleased changes. Release '$1' first (wait for its run to finish), or pass ${1}_dependency=$declared."
+              exit 1
+            fi
+          }
+          case "$KEY" in
+            core)         check_dep abstractions "$VER_ABS" "$DEP_ABS" "src/DotnetCronner.Abstractions" ;;
+            redis|efcore) check_dep abstractions "$VER_ABS" "$DEP_ABS" "src/DotnetCronner.Abstractions"
+                          check_dep core "$VER_CORE" "$DEP_CORE" "src/DotnetCronner" ;;
+          esac
+
+          # The package being released takes its computed VERSION.
           case "$KEY" in
             abstractions) VER_ABS="$VERSION" ;;
             core)         VER_CORE="$VERSION" ;;

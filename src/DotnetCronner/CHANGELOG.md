@@ -6,6 +6,15 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-08-17
+
+### Fixed
+- Republished to correct the `DotnetCronner.Abstractions` dependency floor to `>= 0.0.4`. The 0.0.3 package
+  shipped referencing `>= 0.0.2` because of a release-order race (core was released before the
+  `abstractions-v0.0.3` tag existed), which let NuGet resolve an incompatible Abstractions 0.0.2. All four
+  packages are re-released together at 0.0.4 with matching floors. **0.0.3 is superseded (unlisted) — use
+  0.0.4.** No functional code changes from 0.0.3.
+
 ## [0.0.3] - 2026-08-17
 
 ### Added
