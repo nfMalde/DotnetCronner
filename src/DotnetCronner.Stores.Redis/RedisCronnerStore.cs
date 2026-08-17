@@ -146,5 +146,33 @@ public sealed class RedisCronnerStore : ICronnerStore
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        var entries = await Db.HashGetAllAsync(_jobsKey).ConfigureAwait(false);
+        var stale = entries
+            .Select(e => CronnerJobSerializer.Deserialize(e.Value!))
+            .Where(j => j is not null && j.Kind == CronnerJobKind.OneOff && j.DefinitionId == definitionId &&
+                        (j.State == CronnerTaskState.Completed || j.State == CronnerTaskState.Failed))
+            .OrderByDescending(j => j!.UpdatedUtc)
+            .Skip(Math.Max(0, keepNewest))
+            .ToArray();
+
+        foreach (var job in stale)
+            await RemoveAsync(job!.Id, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default)
+    {
+        // Read-modify-write keeps the current lock/schedule fields (incl. any keepalive renewal) intact.
+        var job = await GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (job is null)
+            return;
+
+        job.Progress = progress;
+        await Db.HashSetAsync(_jobsKey, id, CronnerJobSerializer.Serialize(job)).ConfigureAwait(false);
+    }
+
     private RedisKey LockKey(string id) => $"{_lockPrefix}{id}";
 }

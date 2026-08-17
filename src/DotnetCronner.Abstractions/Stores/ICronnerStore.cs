@@ -83,4 +83,22 @@ public interface ICronnerStore
     /// rollback. The default implementation does nothing.
     /// </summary>
     Task OnCloseAsync(CronnerJob job, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Deletes finished one-off (<see cref="CronnerJobKind.OneOff"/>) rows for the given
+    /// <paramref name="definitionId"/>, keeping the newest <paramref name="keepNewest"/> and removing the
+    /// rest. The scheduler calls this after a one-off finishes when retention is enabled. The default
+    /// implementation does nothing — override it (a targeted delete) to enable retention for a custom store.
+    /// </summary>
+    Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
+    /// Updates <em>only</em> the <see cref="CronnerJob.Progress"/> of the job with the given
+    /// <paramref name="id"/> (leaving lock and schedule fields untouched, so it never races the keepalive).
+    /// Called by the scheduler while a task reports progress. The default implementation does nothing —
+    /// override it (a targeted single-column update) to persist progress in a custom store.
+    /// </summary>
+    Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

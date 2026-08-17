@@ -61,6 +61,29 @@ public sealed class CronnerHookDispatcher
         await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Dispatches all hooks for <paramref name="hookEvent"/> within an EXISTING scope (all hooks share
+    /// <paramref name="scopeProvider"/>, no per-hook scope). Used for the terminal lifecycle hooks so they
+    /// run in the job's execution scope — a hook's <c>ctx.HasParam&lt;T&gt;()</c> then resolves the same
+    /// scoped instances the job used.
+    /// </summary>
+    internal async Task DispatchInScopeAsync(
+        CronnerHookEvent hookEvent, IServiceProvider scopeProvider, CronnerJobDescriptor? descriptor,
+        CronnerJob job, TimeSpan duration, Exception? exception, CancellationToken cancellationToken)
+    {
+        var context = NewContext(scopeProvider, job, duration, exception, cancellationToken, 0m, null);
+
+        foreach (var hook in _globalHooks.Hooks)
+            await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+
+        if (descriptor is not null)
+            foreach (var hook in descriptor.Hooks)
+                await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+
+        foreach (var hook in scopeProvider.GetServices<ICronnerTaskHook>())
+            await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+    }
+
     private async Task SafeInvokeAsync(CronnerHookEvent hookEvent, ICronnerTaskHook hook, CronnerTaskContext context, string id)
     {
         try

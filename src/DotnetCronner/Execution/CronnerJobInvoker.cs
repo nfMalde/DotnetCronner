@@ -8,21 +8,33 @@ namespace DotnetCronner;
 internal static class CronnerJobInvoker
 {
     public static Task InvokeAsync(
-        IServiceProvider services, CronnerJobDescriptor descriptor, CancellationToken cancellationToken) =>
-        InvokeAsync(services, descriptor.TargetType, descriptor.Method, descriptor.Arguments, cancellationToken);
+        IServiceProvider services, CronnerJobDescriptor descriptor, CancellationToken cancellationToken,
+        string? payloadJson = null, string? payloadType = null) =>
+        InvokeAsync(services, descriptor.TargetType, descriptor.Method, descriptor.Arguments, cancellationToken, payloadJson, payloadType);
 
     public static async Task InvokeAsync(
         IServiceProvider services, Type targetType, MethodInfo method,
-        IReadOnlyList<CronnerArgument> argumentPlan, CancellationToken cancellationToken)
+        IReadOnlyList<CronnerArgument> argumentPlan, CancellationToken cancellationToken,
+        string? payloadJson = null, string? payloadType = null)
     {
         object? target = method.IsStatic
             ? null
             : ActivatorUtilities.GetServiceOrCreateInstance(services, targetType);
 
+        var hasPayload = payloadJson is not null && payloadType is not null;
         var arguments = new object?[argumentPlan.Count];
         for (var i = 0; i < arguments.Length; i++)
         {
             var argument = argumentPlan[i];
+
+            // A one-off's payload is delivered to the parameter whose declared type matches it; everything
+            // else resolves as usual. (Attribute-scanned params are Service-kind, so that's what we match.)
+            if (hasPayload && argument.Kind == CronnerArgumentKind.Service && argument.Type.FullName == payloadType)
+            {
+                arguments[i] = CronnerPayloadSerializer.Deserialize(payloadJson!, argument.Type);
+                continue;
+            }
+
             arguments[i] = argument.Kind switch
             {
                 CronnerArgumentKind.CancellationToken => cancellationToken,

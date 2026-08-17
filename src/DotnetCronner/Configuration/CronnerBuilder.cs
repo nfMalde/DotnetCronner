@@ -97,6 +97,18 @@ internal sealed class CronnerBuilder : ICronnerBuilder
         return this;
     }
 
+    public ICronnerBuilder WithKeepAliveInterval(TimeSpan interval)
+    {
+        Options.KeepAliveInterval = interval;
+        return this;
+    }
+
+    public ICronnerBuilder WithOneOffRetention(int keepNewest)
+    {
+        Options.OneOffRetentionCount = Math.Max(0, keepNewest);
+        return this;
+    }
+
     public ICronnerBuilder Sched<TJob>(Expression<Action<TJob>> call, Action<ICronnerScheduleOptions> options) =>
         ScheduleCore(typeof(TJob), call, options);
 
@@ -126,7 +138,7 @@ internal sealed class CronnerBuilder : ICronnerBuilder
 
         _registry.Add(new CronnerJobDescriptor(
             id, CronnerJobNaming.GetName(method), scheduleOptions.CronString, jobType, method, arguments,
-            scheduleOptions.Priority, scheduleOptions.Concurrency, scheduleOptions.Hooks));
+            scheduleOptions.Priority, scheduleOptions.Concurrency, scheduleOptions.Description, scheduleOptions.Hooks));
         return this;
     }
 

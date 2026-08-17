@@ -5,13 +5,21 @@ namespace DotnetCronner;
 /// <summary>Configuration for the Redis store and Redis second-level cache.</summary>
 public sealed class CronnerRedisOptions
 {
-    /// <summary>A StackExchange.Redis connection string, e.g. <c>localhost:6379</c>.</summary>
+    /// <summary>
+    /// A StackExchange.Redis connection string. This carries authentication and TLS inline — e.g.
+    /// <c>localhost:6379</c> for a local unsecured server, or a secured one:
+    /// <c>myhost:6380,user=cronner,password=SECRET,ssl=true,sslHost=myhost</c>.
+    /// </summary>
     public string? Configuration { get; set; }
 
-    /// <summary>Fully specified connection options (takes precedence over <see cref="Configuration"/>).</summary>
+    /// <summary>
+    /// Fully specified connection options (takes precedence over <see cref="Configuration"/>) — the richest
+    /// way to secure the connection: set <c>User</c>/<c>Password</c> (ACL), <c>Ssl</c>, <c>SslHost</c>,
+    /// <c>SslProtocols</c>, and certificate callbacks.
+    /// </summary>
     public ConfigurationOptions? ConfigurationOptions { get; set; }
 
-    /// <summary>A factory for the connection multiplexer, e.g. to reuse an existing one.</summary>
+    /// <summary>A factory for the connection multiplexer, e.g. to reuse an existing (already-secured) one.</summary>
     public Func<IServiceProvider, IConnectionMultiplexer>? ConnectionMultiplexerFactory { get; set; }
 
     /// <summary>

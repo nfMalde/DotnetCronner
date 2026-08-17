@@ -19,8 +19,12 @@ public static class CronnerModelBuilderExtensions
             entity.HasKey(e => e.TaskId);
             entity.Property(e => e.TaskId).HasMaxLength(256);
             entity.Property(e => e.Name).HasMaxLength(512);
+            entity.Property(e => e.DefinitionId).HasMaxLength(256);
+            entity.Property(e => e.PayloadType).HasMaxLength(512);
             entity.HasIndex(e => new { e.State, e.NextRunUtc });
             entity.HasIndex(e => e.NextRunUtc);
+            // One-off lookups and retention pruning filter by definition + state.
+            entity.HasIndex(e => new { e.DefinitionId, e.State });
         });
 
         return modelBuilder;

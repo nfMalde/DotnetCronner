@@ -49,4 +49,7 @@ public sealed class CronnerTaskAttribute : Attribute
     /// <see cref="CronnerConcurrencyMode.DropAndForget"/> — a task never overlaps with itself.
     /// </summary>
     public CronnerConcurrencyMode Concurrency { get; set; } = CronnerConcurrencyMode.DropAndForget;
+
+    /// <summary>An optional human-readable description, surfaced on <c>CronnerJobDescriptor</c> and admin listings.</summary>
+    public string? Description { get; set; }
 }

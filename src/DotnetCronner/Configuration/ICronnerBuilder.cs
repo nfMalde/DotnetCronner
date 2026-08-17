@@ -60,6 +60,18 @@ public interface ICronnerBuilder
     ICronnerBuilder WithDedicatedDI(
         Action<IServiceCollection> configure, ServiceLifetime jobLifetime = ServiceLifetime.Scoped);
 
+    /// <summary>
+    /// Pins how often a running task's lock is renewed and <c>OnKeepAlive</c> fires, independently of
+    /// <see cref="CronnerOptions.LockTtl"/> (default cadence is <c>LockTtl</c>/2). Keep it below the TTL.
+    /// </summary>
+    ICronnerBuilder WithKeepAliveInterval(TimeSpan interval);
+
+    /// <summary>
+    /// Keeps only the newest <paramref name="keepNewest"/> finished one-off (enqueued) instances per
+    /// definition; older ones are pruned after each completes. <c>0</c> disables retention (keep all).
+    /// </summary>
+    ICronnerBuilder WithOneOffRetention(int keepNewest);
+
     /// <summary>Adds a global lifecycle/lock hook instance.</summary>
     ICronnerBuilder AddHook(ICronnerTaskHook hook);
 

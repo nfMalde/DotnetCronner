@@ -20,6 +20,9 @@ public interface ICronnerScheduleOptions
     /// </summary>
     ICronnerScheduleOptions WithConcurrency(CronnerConcurrencyMode mode);
 
+    /// <summary>Sets a human-readable description, surfaced on <c>CronnerJobDescriptor</c> and admin listings.</summary>
+    ICronnerScheduleOptions WithDescription(string description);
+
     /// <summary>Attaches a hook instance to this schedule only.</summary>
     ICronnerScheduleOptions WithHook(ICronnerTaskHook hook);
 
@@ -148,6 +151,8 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
 
     public CronnerConcurrencyMode Concurrency { get; private set; } = CronnerConcurrencyMode.DropAndForget;
 
+    public string? Description { get; private set; }
+
     public IReadOnlyList<ICronnerTaskHook> Hooks => _hooks;
 
     public ICronnerScheduleOptions WithCron(string cronString)
@@ -171,6 +176,12 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
     public ICronnerScheduleOptions WithConcurrency(CronnerConcurrencyMode mode)
     {
         Concurrency = mode;
+        return this;
+    }
+
+    public ICronnerScheduleOptions WithDescription(string description)
+    {
+        Description = description;
         return this;
     }
 

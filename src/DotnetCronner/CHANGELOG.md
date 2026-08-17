@@ -6,6 +6,28 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-08-17
+
+### Added
+- Enqueue one-off jobs with typed payloads (`EnqueueAsync<TPayload>`): the payload is JSON-serialized as its
+  declared type — cycle-safe (`ReferenceHandler.IgnoreCycles` + bounded depth) and proxy-safe — and
+  delivered to the matching method parameter; the instance runs once and then completes.
+- Built-in one-off retention: `WithOneOffRetention(keepNewest)` prunes older finished instances per
+  definition after each completes.
+- `WithKeepAliveInterval(TimeSpan)` to pin the keepalive / `OnKeepAlive` cadence independently of `LockTtl`.
+- `WithDescription(...)` on the schedule options; `GetRegisteredTasks()` and `TriggerNowAsync()` on the client.
+- Total progress is now persisted to the store via a targeted update that never races the keepalive.
+
+### Changed
+- **Terminal lifecycle hooks (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) now run in the job's execution
+  scope**, so a hook's `ctx.HasParam<T>()` resolves the same scoped instances the job used (e.g. read back a
+  summary the job wrote). Lock and progress hooks keep their own scope. This is a documented guarantee.
+
+### Fixed
+- A cron expression that parses but never produces a next occurrence (e.g. 31 February) is now logged as an
+  error and the task is marked `Failed` instead of silently never running. Seeding is per-task and isolated,
+  so one such task can never prevent the others from being scheduled.
+
 ## [0.0.1] - 2026-08-16
 
 ### Added

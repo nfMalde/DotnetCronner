@@ -19,6 +19,7 @@ public sealed class CronnerJobDescriptor
         IReadOnlyList<CronnerArgument> arguments,
         CronnerTaskPriority priority = CronnerTaskPriority.Normal,
         CronnerConcurrencyMode concurrency = CronnerConcurrencyMode.DropAndForget,
+        string? description = null,
         IReadOnlyList<ICronnerTaskHook>? hooks = null)
     {
         Id = id;
@@ -29,6 +30,7 @@ public sealed class CronnerJobDescriptor
         Arguments = arguments;
         Priority = priority;
         Concurrency = concurrency;
+        Description = description;
         Hooks = hooks ?? [];
     }
 
@@ -55,6 +57,9 @@ public sealed class CronnerJobDescriptor
 
     /// <summary>What happens when the task becomes due while a previous run is still executing.</summary>
     public CronnerConcurrencyMode Concurrency { get; }
+
+    /// <summary>A human-readable description of the task, if provided.</summary>
+    public string? Description { get; }
 
     /// <summary>Hooks attached to this specific schedule (in addition to any global hooks).</summary>
     public IReadOnlyList<ICronnerTaskHook> Hooks { get; }

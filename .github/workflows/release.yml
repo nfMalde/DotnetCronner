@@ -139,6 +139,45 @@ jobs:
             echo "The NuGet push is gated on the \`release\` environment — approve it to publish."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Show EXACTLY what will ship as release notes — both the Markdown (GitHub Release) and the flattened
+      # plain text (NuGet) — so you can eyeball them before approving the publish gate.
+      - name: Release-notes preview
+        env:
+          PKGDIR: ${{ steps.plan.outputs.pkgdir }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          KEY: ${{ github.event.inputs.package }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/release-notes.sh "$PKGDIR/CHANGELOG.md" "$VERSION" notes.md notes.txt
+
+          # A release MUST document its version. No section = hard fail here in prepare, so publish never runs.
+          if [[ ! -s notes.md ]]; then
+            {
+              echo ""
+              echo "## ❌ Release blocked — no changelog for \`$KEY $VERSION\`"
+              echo ""
+              echo "> There is no \`## [$VERSION]\` section in \`$PKGDIR/CHANGELOG.md\`."
+              echo "> Roll your \`## [Unreleased]\` entries into \`## [$VERSION] - <date>\`, commit, and re-run."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::No '## [$VERSION]' section in $PKGDIR/CHANGELOG.md — every release must document its version."
+            exit 1
+          fi
+
+          {
+            echo ""
+            echo "## Release notes for \`$KEY $VERSION\`"
+            echo ""
+            echo "### Markdown — goes to the GitHub Release"
+            echo ""
+            cat notes.md
+            echo ""
+            echo "### Plain text — goes to the NuGet release-notes field"
+            echo ""
+            echo '```text'
+            cat notes.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build
         run: dotnet build DotnetCronner.slnx -c Release
 
@@ -168,6 +207,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Produce notes.md (Markdown → GitHub Release) and notes.txt (plain text → NuGet) for this version.
+      - name: Release notes
+        run: bash .github/scripts/release-notes.sh "$PKGDIR/CHANGELOG.md" "$VERSION" notes.md notes.txt
+
       - name: Pack
         env:
           CRONNER_VER_ABSTRACTIONS: ${{ needs.prepare.outputs.ver_abstractions }}
@@ -176,7 +219,8 @@ jobs:
           CRONNER_VER_EFCORE: ${{ needs.prepare.outputs.ver_efcore }}
         run: |
           set -euo pipefail
-          # Release notes come from the package's CHANGELOG.md via Directory.Build.props — no override here.
+          # Plain-text notes for this version only → Directory.Build.props reads CRONNER_RELEASE_NOTES.
+          export CRONNER_RELEASE_NOTES="$(cat notes.txt)"
           dotnet pack "$PROJECT" -c Release -o out
 
       # Trusted Publishing (OIDC) — no stored API key. This step exchanges the job's short-lived GitHub
@@ -222,10 +266,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          FLAG=""
-          [[ "$PRERELEASE" == "true" ]] && FLAG="--prerelease"
+          ARGS=()
+          [[ "$PRERELEASE" == "true" ]] && ARGS+=(--prerelease)
+          # Markdown changelog section for this version → the Release body. Fall back to auto-generated
+          # notes only if the changelog has no section for it.
+          if [[ -s notes.md ]]; then ARGS+=(--notes-file notes.md); else ARGS+=(--generate-notes); fi
           gh release create "$TAG" out/*.nupkg \
             --target "$GITHUB_SHA" \
             --title "$KEY v$VERSION" \
-            --generate-notes \
-            $FLAG
+            "${ARGS[@]}"

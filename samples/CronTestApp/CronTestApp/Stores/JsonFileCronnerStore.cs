@@ -181,6 +181,57 @@ public sealed class JsonFileCronnerStore : ICronnerStore
     }
 
     /// <inheritdoc />
+    /// <remarks>One-off retention (the built-in policy): keep only the newest N finished instances of a definition.</remarks>
+    public async Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var jobs = await LoadAsync(cancellationToken).ConfigureAwait(false);
+            var stale = jobs.Values
+                .Where(j => j.Kind == CronnerJobKind.OneOff && j.DefinitionId == definitionId &&
+                            j.State is CronnerTaskState.Completed or CronnerTaskState.Failed)
+                .OrderByDescending(j => j.UpdatedUtc)
+                .Skip(Math.Max(0, keepNewest))
+                .Select(j => j.Id)
+                .ToArray();
+
+            if (stale.Length == 0)
+                return;
+
+            foreach (var id in stale)
+                jobs.Remove(id);
+            await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
+            _activity.Record(definitionId, $"[store] pruned {stale.Length} old one-off instance(s), keeping newest {keepNewest}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Targeted progress write — leaves lock/schedule fields untouched so it never races the keepalive.</remarks>
+    public async Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var jobs = await LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (!jobs.TryGetValue(id, out var job))
+                return;
+
+            job.Progress = progress;
+            job.UpdatedUtc = DateTimeOffset.UtcNow;
+            await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
     /// <remarks>Opens this run's "session" — a real store would open a unit of work / transaction here.</remarks>
     public Task OnStartAsync(CronnerJob job, CancellationToken cancellationToken = default)
     {

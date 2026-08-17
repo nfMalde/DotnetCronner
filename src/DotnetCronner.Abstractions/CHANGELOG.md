@@ -6,14 +6,27 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-08-17
+
 ### Added
-- `CronnerJobEntity.ToDomain()` and `Apply(job)` are now `virtual`, so a subclass can extend the mapping
-  (e.g. populate its own columns) — EF-materialized subclasses dispatch to the override.
+- One-off / enqueued jobs: `ICronnerClient.EnqueueAsync<TPayload>(...)`, plus `CronnerJobKind` and the
+  `CronnerJob`/`CronnerJobEntity` fields `Kind`, `DefinitionId`, `Payload`, `PayloadType` — a registered task
+  can be enqueued with a typed payload delivered as a method parameter, run once, and retained/pruned.
+- `ICronnerClient.GetRegisteredTasks()` returning `CronnerRegisteredTask` — every registered definition
+  (including never-run / manual ones), for admin listings.
+- `ICronnerClient.TriggerNowAsync(id)` — the unambiguous "run now" (`ScheduleTaskAsync` is now an alias).
+- `CronnerTaskAttribute.Description`, surfaced on `CronnerRegisteredTask`.
+- `CronnerJob.Progress` / `CronnerJobEntity.Progress` and `ICronnerStore.UpdateProgressAsync(...)` (total
+  progress is persisted); `ICronnerStore.PruneCompletedOneOffsAsync(...)` for one-off retention. Both are
+  default no-ops so existing custom stores keep compiling.
+- `CronnerJobEntity.ToDomain()` / `Apply(job)` are now `virtual` (subclasses can extend the mapping).
 
 ### Changed
-- **Breaking:** `CronnerJobEntity.Id` renamed to `CronnerJobEntity.TaskId` (still a `string` and still the
-  primary key), so it no longer collides with an `int`/`long` surrogate-key convention on consumer entities,
-  base classes, or automappers. The domain `CronnerJob.Id` is unchanged.
+- **Breaking:** `CronnerJobEntity.Id` renamed to `CronnerJobEntity.TaskId` (still a `string` primary key),
+  so it no longer collides with an `int`/`long` surrogate-key convention on consumer entities, base classes,
+  or automappers. The domain `CronnerJob.Id` is unchanged.
+- `ICronnerClient.CancelTaskAsync` clarified: cancels a currently running execution (via its token) or
+  unschedules a pending one.
 
 ## [0.0.1] - 2026-08-16
 

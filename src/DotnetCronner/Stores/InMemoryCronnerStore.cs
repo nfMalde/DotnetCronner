@@ -92,6 +92,38 @@ public sealed class InMemoryCronnerStore : ICronnerStore
         return Task.FromResult(false);
     }
 
+    /// <inheritdoc />
+    public Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        lock (_acquireGate)
+        {
+            var stale = _jobs.Values
+                .Where(j => j.Kind == CronnerJobKind.OneOff && j.DefinitionId == definitionId && IsFinished(j))
+                .OrderByDescending(j => j.UpdatedUtc)
+                .Skip(Math.Max(0, keepNewest))
+                .ToArray();
+            foreach (var job in stale)
+                _jobs.TryRemove(job.Id, out _);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default)
+    {
+        if (_jobs.TryGetValue(id, out var job))
+        {
+            job.Progress = progress;
+            job.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static bool IsFinished(CronnerJob job) =>
+        job.State is CronnerTaskState.Completed or CronnerTaskState.Failed;
+
     private static bool IsEligible(CronnerJob job, DateTimeOffset now) =>
         job.State != CronnerTaskState.Cancelled &&
         job.NextRunUtc is { } next && next <= now &&

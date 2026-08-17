@@ -107,6 +107,8 @@ Configure via `AddDotnetCronner(c => c.Configure(o => ...))` or `app.UseDotnetCr
 | `PollingInterval` | 1s | How often the store is polled for due tasks |
 | `MaxConcurrentTasks` | processor count | Global concurrent execution limit |
 | `LockTtl` | 1 min | Lock validity window. A running task renews its claim every `LockTtl`/2, so long jobs keep their lock; a task is treated as stalled and reclaimable only after a worker stops renewing for longer than this (e.g. a crash) |
+| `KeepAliveInterval` | `null` (= `LockTtl`/2) | Pins how often the lock renews and `OnKeepAlive` fires, independently of `LockTtl` (also via `WithKeepAliveInterval(...)`). Keep it below `LockTtl` |
+| `OneOffRetentionCount` | 0 (keep all) | Keep only the newest N finished one-off (enqueued) instances per definition (also via `WithOneOffRetention(N)`) |
 | `DefaultMaxRetries` / `RetryDelay` | 0 / 0 | Automatic retry on failure |
 | `ScanEntryAssembly` | true | Scan the entry assembly for `[CronnerTask]` methods |
 
@@ -165,6 +167,18 @@ app.UseDotnetCronner(c => c.Sched<TenantJobs>(
 ```csharp
 // Redis backing store (package: DotnetCronner.Stores.Redis)
 app.UseDotnetCronner(c => c.UseRedisAsStore("localhost:6379"));
+
+// Secured Redis — auth + TLS travel in the connection string…
+app.UseDotnetCronner(c => c.UseRedisAsStore("myhost:6380,user=cronner,password=SECRET,ssl=true,sslHost=myhost"));
+// …or via ConfigurationOptions for full control (SslProtocols, cert callbacks, …):
+app.UseDotnetCronner(c => c.UseRedisAsStore(o => o.ConfigurationOptions = new ConfigurationOptions
+{
+    EndPoints = { "myhost:6380" }, User = "cronner", Password = "SECRET", Ssl = true, SslHost = "myhost",
+}));
+// …or bring your own multiplexer: o.ConnectionMultiplexerFactory = sp => existingMultiplexer;
+// …or configure entirely from DI — e.g. pull the (secured) string from IConfiguration:
+app.UseDotnetCronner(c => c.UseRedisAsStore((sp, o) =>
+    o.Configuration = sp.GetRequiredService<IConfiguration>().GetConnectionString("Redis")));
 
 // EF Core backing store (package: DotnetCronner.Stores.EntityFrameworkCore)
 builder.Services.AddDbContextFactory<AppDbContext>(o => o.UseSqlServer(cs));
@@ -289,10 +303,16 @@ public sealed class LoggingHook(ILogger<LoggingHook> logger) : ICronnerTaskHook
 builder.Services.AddScoped<ICronnerTaskHook, LoggingHook>();   // or cronner.AddHook<LoggingHook>()
 ```
 
-`ICronnerTaskHook` has default method implementations, so override only the events you need. **Each hook
-invocation runs in its own fresh DI scope** — resolve scoped services through `ctx.Services` or
-`ctx.HasParam<T>()`. `CronnerTaskContext` exposes the `Job`, the scoped `Services`, `HasParam<T>()`, the
-`CancellationToken`, the `Duration`, and the `Exception` on failure.
+`ICronnerTaskHook` has default method implementations, so override only the events you need. The
+**terminal lifecycle hooks** (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) run in the **job's execution
+scope**, so a hook's `ctx.HasParam<T>()` resolves the *same* scoped instances the job used — e.g. the job
+writes a summary into a scoped service and the terminal hook reads it back. **Lock and progress hooks**
+fire outside the job's execution, so each runs in its **own** fresh scope. Resolve scoped services through
+`ctx.Services` or `ctx.HasParam<T>()`; `CronnerTaskContext` exposes the `Job`, `Services`, `HasParam<T>()`,
+`CancellationToken`, `Duration`, and the `Exception` on failure.
+
+> Retries and `OnFail`: with `DefaultMaxRetries > 0`, `OnFail` fires on **each** failed attempt (not once
+> after retries are exhausted) — so guard against N notifications per incident if that matters.
 
 For database work inside a hook, resolve your own scoped unit-of-work that way — **don't call
 `ICronnerStore` from a hook.** It has no per-hook session, and creating the scope alone opens no
@@ -334,18 +354,54 @@ cronner.OnTotalProgressChange(ctx => hub.PushAsync(ctx.Job.Id, ctx.TotalProgress
 Both `Progress` (fire-and-forget) and `ProgressAsync` (awaits the hooks) are available on the context and
 on a scope; fire-and-forget reports are drained before the terminal `OnSuccess`/`OnFail` hook runs.
 
+### One-off jobs — enqueue with a payload
+
+Beyond recurring cron tasks, you can enqueue a **single** run of a registered task carrying a typed
+payload. Define an enqueue-only task (a `[CronnerTask]` with **no cron**) whose payload is an ordinary
+parameter — everything else still resolves from DI:
+
+```csharp
+public sealed record ImportPayload(int BatchSize, string Source);
+
+public class ImportJobs
+{
+    [CronnerTask("import:run", Description = "One-off import")]   // no cron = enqueue-only
+    public Task RunAsync(ImportPayload payload, IImporter importer, CancellationToken ct)
+        => importer.RunAsync(payload.Source, payload.BatchSize, ct);
+}
+```
+
+```csharp
+// Enqueue it now (or at a future time); returns the one-off instance id.
+string id = await client.EnqueueAsync("import:run",
+    new ImportPayload(500, "steam"), runAt: null);
+```
+
+The payload is JSON-serialized as its **declared** type (cycle-safe and proxy-safe — pass plain DTOs, not
+lazy-loading ORM entities) and delivered to the parameter whose type matches. The instance runs **once**
+and then completes; enable **retention** with `WithOneOffRetention(N)` to keep only the newest N finished
+instances per definition. `CronnerJob.Kind` / `DefinitionId` distinguish a one-off instance from its
+recurring definition.
+
 ### Managing tasks — `ICronnerClient`
 
 There is no bundled dashboard. Inject `ICronnerClient` and expose management through your own, already
 secured, endpoints:
 
 ```csharp
+// Store rows (tasks that have run); GetRegisteredTasks() lists every definition incl. never-run ones.
 app.MapGet("/tasks", (ICronnerClient c, CronnerTaskState? state, int offset = 0, int limit = 50)
     => c.GetTasksAsync(state, offset, limit));
+app.MapGet("/registered", (ICronnerClient c) => c.GetRegisteredTasks());
 app.MapGet("/tasks/{id}", (ICronnerClient c, string id) => c.GetTaskByIdAsync(id));
-app.MapPost("/tasks/{id}/run", (ICronnerClient c, string id) => c.ScheduleTaskAsync(id));
-app.MapPost("/tasks/{id}/cancel", (ICronnerClient c, string id) => c.CancelTaskAsync(id));
+app.MapPost("/tasks/{id}/run", (ICronnerClient c, string id) => c.TriggerNowAsync(id));    // run now, ignoring cron
+app.MapPost("/tasks/{id}/cancel", (ICronnerClient c, string id) => c.CancelTaskAsync(id)); // cancel running or unschedule
 ```
+
+`TriggerNowAsync` is the unambiguous "run now" (`ScheduleTaskAsync` is an alias). `CancelTaskAsync` cancels
+a **running** execution via its token, or unschedules a pending one. `GetRegisteredTasks()` returns the
+in-memory definitions (with `Description`), so an admin screen can list manual/enqueue-only jobs that have
+never produced a store row.
 
 ## Validation
 
@@ -388,7 +444,8 @@ Two runnable samples live in [`samples/`](samples):
 - **`DotnetCronner.Sample.WebApi`** — a minimal quickstart.
 - **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes,
   all twelve hooks in every registration style, progress, the keepalive and lock loss, discovery and DI
-  modes), driven entirely by a `.env` file. Copy `.env.example` to `.env` and `dotnet run`.
+  modes), driven entirely by a `.env` file. It's a **Docker Compose** project (app + Redis + PostgreSQL) —
+  requires Docker + Docker Compose: copy `.env.example` to `.env` and `docker compose up --build`.
 
 ## Changelog
 

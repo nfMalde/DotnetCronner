@@ -20,6 +20,21 @@ public class CronnerJobEntity
     /// <summary>Fully qualified task name.</summary>
     public virtual string Name { get; set; } = default!;
 
+    /// <summary>Whether this is a recurring definition or a one-off enqueued instance.</summary>
+    public virtual CronnerJobKind Kind { get; set; }
+
+    /// <summary>For a one-off instance, the id of the registered definition whose method it runs.</summary>
+    public virtual string? DefinitionId { get; set; }
+
+    /// <summary>The JSON-serialized payload for a one-off instance, or <c>null</c>.</summary>
+    public virtual string? Payload { get; set; }
+
+    /// <summary>The payload's declared type name, or <c>null</c>.</summary>
+    public virtual string? PayloadType { get; set; }
+
+    /// <summary>The most recent total progress reported (0..1 by convention).</summary>
+    public virtual decimal Progress { get; set; }
+
     /// <summary>Cron expression, or <c>null</c> for a manual task.</summary>
     public virtual string? CronExpression { get; set; }
 
@@ -64,6 +79,11 @@ public class CronnerJobEntity
     {
         Id = TaskId,
         Name = Name,
+        Kind = Kind,
+        DefinitionId = DefinitionId,
+        Payload = Payload,
+        PayloadType = PayloadType,
+        Progress = Progress,
         CronExpression = CronExpression,
         State = State,
         Priority = Priority,
@@ -93,6 +113,11 @@ public class CronnerJobEntity
     public virtual void Apply(CronnerJob job)
     {
         Name = job.Name;
+        Kind = job.Kind;
+        DefinitionId = job.DefinitionId;
+        Payload = job.Payload;
+        PayloadType = job.PayloadType;
+        Progress = job.Progress;
         CronExpression = job.CronExpression;
         State = job.State;
         Priority = job.Priority;

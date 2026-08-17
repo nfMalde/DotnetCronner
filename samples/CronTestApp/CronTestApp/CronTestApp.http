@@ -1,13 +1,15 @@
 @host = http://localhost:8080
-# F5 / dotnet run instead of docker compose? Use the Kestrel port:
-# @host = http://localhost:5170
 
 ### What is this app running right now (store, cache, discovery, options)?
 GET {{host}}/config
 Accept: application/json
 
-### Every registered task with its state, priority and next run
+### Every persisted task row with its state, priority and next run
 GET {{host}}/tasks
+Accept: application/json
+
+### Every registered DEFINITION, incl. never-run / manual / enqueue-only ones (with Description)
+GET {{host}}/registered
 Accept: application/json
 
 ### Only the scheduled ones (states: Idle, Scheduled, Queued, Running, Completed, Failed, Cancelled)
@@ -23,6 +25,21 @@ POST {{host}}/tasks/attr:manual/run
 
 ### Trigger the manual lambda task
 POST {{host}}/tasks/lambda:manual/run
+
+# ─── One-off jobs: enqueue with a typed payload ─────────────────────────────────────────────────
+
+### Enqueue a one-off with a payload (the payload lands as the job's method parameter)
+POST {{host}}/enqueue/notify
+Content-Type: application/json
+
+{ "to": "alice@example.com", "message": "your import finished", "attempt": 1 }
+
+### Bodyless is fine too — the endpoint falls back to a demo payload (never enqueues null)
+POST {{host}}/enqueue/notify
+
+### ... watch the one-off deliver its payload and complete
+GET {{host}}/activity?take=20&jobId=enqueue:notify
+Accept: application/json
 
 # ─── Execution lock: keepalive, loss, cancellation ──────────────────────────────────────────────
 

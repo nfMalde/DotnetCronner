@@ -43,6 +43,8 @@ public static class CronnerSetup
                 cronnerOptions.PollingInterval = options.PollingInterval;
                 cronnerOptions.MaxConcurrentTasks = options.MaxConcurrentTasks;
                 cronnerOptions.LockTtl = options.LockTtl;
+                cronnerOptions.KeepAliveInterval = options.KeepAliveInterval;
+                cronnerOptions.OneOffRetentionCount = options.OneOffRetention;
                 cronnerOptions.DefaultMaxRetries = options.MaxRetries;
                 cronnerOptions.RetryDelay = options.RetryDelay;
             });
