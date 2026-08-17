@@ -6,6 +6,14 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-08-17
+
+### Fixed
+- Re-released together with the rest of the suite at 0.0.4 to pin correct cross-package dependency floors
+  (`DotnetCronner >= 0.0.4`, `DotnetCronner.Abstractions >= 0.0.4`). The 0.0.3 packages carried floors that a
+  release-order race left pointing at an incompatible Abstractions 0.0.2. **0.0.3 is superseded (unlisted) —
+  use 0.0.4.** No functional code changes from 0.0.3.
+
 ## [0.0.3] - 2026-08-17
 
 ### Added

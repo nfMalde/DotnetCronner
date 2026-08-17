@@ -6,6 +6,14 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-08-17
+
+### Changed
+- Version alignment only: re-released at 0.0.4 so the whole suite shares one version and the dependent
+  packages (core, EF Core, Redis) can pin `DotnetCronner.Abstractions >= 0.0.4` after a 0.0.3 release-order
+  race left their floors pointing at an incompatible Abstractions 0.0.2. **No API or behavior changes from
+  0.0.3.** 0.0.3 remains fully compatible; it is superseded (unlisted) only to keep the suite versions in step.
+
 ## [0.0.3] - 2026-08-17
 
 ### Added
