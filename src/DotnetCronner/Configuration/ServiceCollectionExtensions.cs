@@ -34,7 +34,12 @@ public static class CronnerServiceCollectionExtensions
         services.TryAddSingleton<CronnerExecutionTracker>();
         services.TryAddSingleton<CronnerScheduleCalculator>();
         services.TryAddSingleton<IOptions<CronnerOptions>>(sp => Options.Create(sp.GetRequiredService<CronnerOptions>()));
-        services.TryAddSingleton<ICronnerStore>(sp => sp.GetRequiredService<CronnerStoreHolder>().Build(sp));
+        // Scoped, not singleton: this follows the ambient scope, so a store configured as
+        // CronnerStoreLifetime.Scoped is built per scope with that scope's dependencies. A Singleton
+        // store still resolves to the one cached instance, so nothing changes for in-memory, Redis or
+        // EF. The engine does not inject this directly -- it opens a scope per operation.
+        services.TryAddScoped<ICronnerStore>(sp => sp.GetRequiredService<CronnerStoreHolder>().Resolve(sp));
+        services.TryAddSingleton<CronnerStoreAccessor>();
         services.TryAddSingleton<ICronnerClient, CronnerClient>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, CronnerHostedService>());
 

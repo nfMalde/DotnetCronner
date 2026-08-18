@@ -6,6 +6,16 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-08-18
+
+### Changed
+- Version bump to build against the latest `DotnetCronner` / `DotnetCronner.Abstractions` API
+  (`CronnerStoreLifetime`). No behavior change to the EF Core store itself.
+- Declares `CronnerStoreLifetime.Singleton` explicitly when configuring the store. No behavior change:
+  this store holds an `IDbContextFactory<TContext>` and creates a short-lived `DbContext` per call, so it
+  is already safe for the concurrent operations the scheduler performs. Stated in code so the choice is
+  visible rather than inherited from a default.
+
 ## [0.0.5] - 2026-08-18
 
 ### Added

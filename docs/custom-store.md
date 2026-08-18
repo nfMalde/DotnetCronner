@@ -39,11 +39,45 @@ to and from your own persistence type.
 
 ## Three things to get right
 
-### 1. Lifetime — the store is a singleton
+### 1. Lifetime — declare it
 
-`UseStore<TStore>()` instantiates your store **once** (it's effectively a singleton). So **do not inject a
-scoped `DbContext`/UnitOfWork into the constructor** — inject **`IServiceScopeFactory`** and open a fresh
-scope per operation. This is the single most common mistake.
+`UseStore<TStore>()` defaults to `CronnerStoreLifetime.Singleton`: your store is built **once** and reused
+for the application's lifetime. The scheduler polls while jobs run, so its methods overlap — a singleton
+store must be safe for concurrent use.
+
+That makes a constructor-injected `DbContext`, ORM session or open connection wrong by default: one instance
+would serve overlapping operations, which fails with *"a command is already in progress"* (Npgsql) or
+*"a second operation was started on this context instance"* (EF Core). It typically only appears once enough
+tasks are registered for the seeding fan-out to overlap, so it hides in small samples and shows up under
+load.
+
+Two correct options, in order of preference:
+
+**Declare the store scoped** — it is then built per scheduler operation, from that operation's DI scope, so
+constructor injection of a scoped resource is safe and reads naturally:
+
+```csharp
+app.UseDotnetCronner(c => c.UseStore<MyStore>(CronnerStoreLifetime.Scoped));
+
+public sealed class MyStore(AppDbContext db) : ICronnerStore { /* ... */ }
+```
+
+**Or keep it a singleton and hold a factory**, creating the short-lived resource per call. This is what the
+built-in EF Core store does with `IDbContextFactory<T>`:
+
+```csharp
+public sealed class MyStore(IDbContextFactory<AppDbContext> factory) : ICronnerStore
+{
+    public async Task<CronnerJob?> GetByIdAsync(string id, CancellationToken ct = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        // ...
+    }
+}
+```
+
+Either way the rule is the same: **one scheduler operation must never share a non-concurrent resource with
+another.** Pick whichever expresses that more clearly for your storage technology.
 
 ### 2. `AcquireDueAsync` — the atomic claim
 

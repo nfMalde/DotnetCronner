@@ -6,6 +6,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-08-18
+
+### Changed
+- Version bump to build against the latest `DotnetCronner` / `DotnetCronner.Abstractions` API
+  (`CronnerStoreLifetime`). No behavior change to the Redis store itself.
+- Declares `CronnerStoreLifetime.Singleton` explicitly when configuring the store. No behavior change:
+  `IConnectionMultiplexer` is thread-safe and intended to be shared, so one store instance serves
+  concurrent scheduler operations safely. Stated in code so the choice is visible rather than inherited
+  from a default.
+
 ## [0.0.5] - 2026-08-18
 
 ### Added

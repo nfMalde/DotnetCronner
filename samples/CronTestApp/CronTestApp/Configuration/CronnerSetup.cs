@@ -257,6 +257,19 @@ public static class CronnerSetup
                 cronner.UseStore<JsonFileCronnerStore>();
                 break;
 
+            case StoreKind.Scoped:
+                // Holds one open connection, so it must NOT be shared across overlapping operations.
+                // Scoped means the scheduler builds it per operation, from that operation's DI scope.
+                cronner.UseStore<ScopedSqliteCronnerStore>(CronnerStoreLifetime.Scoped);
+                break;
+
+            case StoreKind.ScopedBroken:
+                // Deliberately wrong: the same connection-holding store as a singleton. The poll loop
+                // and running jobs then issue overlapping commands on one connection. Kept so the
+                // failure this lifetime prevents can be reproduced on demand.
+                cronner.UseStore<ScopedSqliteCronnerStore>(CronnerStoreLifetime.Singleton);
+                break;
+
             default:
                 throw new InvalidOperationException($"Unhandled store '{options.Store}'.");
         }

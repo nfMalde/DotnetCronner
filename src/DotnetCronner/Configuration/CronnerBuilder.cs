@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DotnetCronner;
@@ -29,11 +30,13 @@ internal sealed class CronnerBuilder : ICronnerBuilder
 
     public CronnerStoreHolder StoreHolder { get; }
 
-    public ICronnerBuilder UseStore<TStore>() where TStore : class, ICronnerStore
+    public ICronnerBuilder UseStore<TStore>(
+        CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton) where TStore : class, ICronnerStore
     {
         StoreHolder.ConfigureStore(
             sp => ActivatorUtilities.GetServiceOrCreateInstance<TStore>(sp),
-            $"UseStore<{typeof(TStore).Name}>()");
+            $"UseStore<{typeof(TStore).Name}>()",
+            lifetime);
         return this;
     }
 

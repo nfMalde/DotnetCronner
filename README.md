@@ -189,6 +189,10 @@ app.UseDotnetCronner(c => c.UseEntityFrameworkStore<AppDbContext>());
 
 // Custom store — implement ICronnerStore
 app.UseDotnetCronner(c => c.UseStore<MyStore>());
+
+// ...or built per scheduler operation, when the store holds a DbContext,
+// ORM session or connection that must not be shared across overlapping work
+app.UseDotnetCronner(c => c.UseStore<MyStore>(CronnerStoreLifetime.Scoped));
 ```
 
 Bring your own persistence (Dapper, NHibernate, a UnitOfWork, …) by implementing `ICronnerStore` —
