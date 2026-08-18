@@ -6,6 +6,41 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-08-18
+
+### Added
+- `CronnerStoreLifetime` (`Singleton` | `Scoped`) declares how often the configured store is built, passed
+  to `UseStore<TStore>(lifetime)` and `CronnerStoreHolder.ConfigureStore(...)`. `Singleton` (the default,
+  and the previous behavior) builds once and reuses the instance — correct for a store that is stateless or
+  owns its own state, such as the in-memory store, Redis, or anything holding a factory. `Scoped` builds the
+  store per scheduler operation from that operation's DI scope — correct for a store holding a `DbContext`,
+  an ORM session, or an open connection.
+- `CronnerStoreAccessor`: opens a DI scope per store operation and resolves the store from it, so the
+  scheduler and client — both singletons — never capture a scoped store for the process lifetime.
+
+### Fixed
+- A store holding a scoped, non-concurrent resource was shared across overlapping scheduler operations.
+  `ICronnerStore` was registered as a singleton built from the **root** provider, so a store depending on a
+  `DbContext` or ORM session captured one instance for the application's lifetime; the scheduler polls while
+  jobs run, so its methods overlap and issue concurrent commands on one connection. That surfaces as
+  `NpgsqlOperationInProgressException` ("a command is already in progress") or EF Core's "a second operation
+  was started on this context instance", and only once enough tasks are registered for the seeding fan-out to
+  overlap — so it hides in small samples and appears under load. Stores declared `Scoped` now get a fresh
+  instance, resolved from the operation's own scope, per call.
+  The built-in in-memory, Redis and EF Core stores are unaffected — they are already safe for concurrent use
+  and remain `Singleton`.
+
+### Changed
+- `ICronnerStore` is registered as **scoped** rather than singleton, so an injected store follows the ambient
+  scope and honours the configured lifetime. A `Singleton` store still resolves to one shared instance.
+- `CronnerStoreHolder.Build(IServiceProvider)` is obsolete in favour of `Resolve(IServiceProvider)`; it could
+  not honour a scoped lifetime. `Build` still compiles and behaves as `Singleton`.
+- **Breaking:** `CronnerClient` takes a `CronnerStoreAccessor` instead of an `ICronnerStore`. Affects only
+  code constructing `CronnerClient` directly; resolving `ICronnerClient` from DI is unchanged.
+- Configuring a second store now names the store already in effect:
+  `"A custom store UseStore<X>() is already used. You can only use one store. 'UseRedisAsStore()' would
+  replace it."` — when someone hits this, the useful information is which store they are already on.
+
 ## [0.0.5] - 2026-08-18
 
 ### Added

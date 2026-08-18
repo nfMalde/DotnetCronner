@@ -19,6 +19,20 @@ public enum StoreKind
 
     /// <summary>This app's hand-written <c>ICronnerStore</c> (JSON file), registered with <c>UseStore&lt;T&gt;()</c>.</summary>
     Custom,
+
+    /// <summary>
+    /// A store holding one open SQLite connection with no internal locking, registered
+    /// <c>Scoped</c> — each scheduler operation gets its own instance. The supported way to back the
+    /// scheduler with a scoped, non-concurrent resource.
+    /// </summary>
+    Scoped,
+
+    /// <summary>
+    /// The SAME store registered <c>Singleton</c>, so overlapping scheduler operations share one
+    /// connection. Present to demonstrate the failure the scoped lifetime exists to prevent — expect
+    /// concurrent-access errors under load. Not a configuration to copy.
+    /// </summary>
+    ScopedBroken,
 }
 
 /// <summary>Whether a second-level cache sits in front of the store.</summary>
@@ -143,6 +157,8 @@ public sealed class TestAppOptions
             ["ef-postgres"] = StoreKind.EfPostgres,
             ["ef-postgres-appcontext"] = StoreKind.EfPostgresAppContext,
             ["custom"] = StoreKind.Custom,
+            ["scoped"] = StoreKind.Scoped,
+            ["scoped-broken"] = StoreKind.ScopedBroken,
         }),
         Cache = ReadEnum(configuration, "CRONNER_CACHE", CacheKind.None, new Dictionary<string, CacheKind>(StringComparer.OrdinalIgnoreCase)
         {

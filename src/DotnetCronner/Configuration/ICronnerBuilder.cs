@@ -24,7 +24,14 @@ public interface ICronnerBuilder
     /// instance is resolved from DI when available, otherwise created via its constructor.
     /// Mutually exclusive with the Redis / EF Core store extensions.
     /// </summary>
-    ICronnerBuilder UseStore<TStore>() where TStore : class, ICronnerStore;
+    /// <param name="lifetime">
+    ///     <see cref="CronnerStoreLifetime.Singleton"/> (default) for a store that is stateless or
+    ///     owns its own state — in-memory, Redis, or anything holding a factory.
+    ///     <see cref="CronnerStoreLifetime.Scoped"/> for one holding a DbContext, ORM session or
+    ///     connection: it is then built per scheduler operation, so overlapping work never shares it.
+    /// </param>
+    ICronnerBuilder UseStore<TStore>(CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton)
+        where TStore : class, ICronnerStore;
 
     /// <summary>Enables a second-level cache in front of the store.</summary>
     ICronnerBuilder UseSecondLevelCache(Action<ICronnerCacheBuilder> configure);

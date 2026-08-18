@@ -6,6 +6,14 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-08-18
+
+### Added
+- `CronnerStoreLifetime` (`Singleton` | `Scoped`): declares how often DotnetCronner builds the configured
+  `ICronnerStore`. Deliberately explicit rather than inferred from a DI registration — the store is consumed
+  by a singleton scheduler, so a DI lifetime alone cannot express it, and a scoped registration resolved from
+  the root provider silently becomes captive.
+
 ## [0.0.5] - 2026-08-18
 
 ### Added

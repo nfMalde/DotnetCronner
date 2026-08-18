@@ -18,7 +18,10 @@ public static class CronnerEfBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.StoreHolder.ConfigureStore(
             sp => new EfCronnerStore<TContext>(sp.GetRequiredService<IDbContextFactory<TContext>>()),
-            $"UseEntityFrameworkStore<{typeof(TContext).Name}>()");
+            $"UseEntityFrameworkStore<{typeof(TContext).Name}>()",
+            // Singleton by design: this store holds an IDbContextFactory and creates a short-lived
+            // DbContext per call, so concurrent scheduler operations never share one.
+            CronnerStoreLifetime.Singleton);
         return builder;
     }
 

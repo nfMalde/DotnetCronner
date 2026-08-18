@@ -3,15 +3,15 @@ namespace DotnetCronner;
 /// <summary>The default in-process implementation of <see cref="ICronnerClient"/> over the configured store.</summary>
 public sealed class CronnerClient : ICronnerClient
 {
-    private readonly ICronnerStore _store;
+    private readonly CronnerStoreAccessor _stores;
     private readonly CronnerScheduleSignal _signal;
     private readonly CronnerExecutionTracker _tracker;
     private readonly CronnerRegistry _registry;
 
     /// <summary>Creates the client.</summary>
-    public CronnerClient(ICronnerStore store, CronnerScheduleSignal signal, CronnerExecutionTracker tracker, CronnerRegistry registry)
+    public CronnerClient(CronnerStoreAccessor stores, CronnerScheduleSignal signal, CronnerExecutionTracker tracker, CronnerRegistry registry)
     {
-        _store = store;
+        _stores = stores;
         _signal = signal;
         _tracker = tracker;
         _registry = registry;
@@ -19,12 +19,12 @@ public sealed class CronnerClient : ICronnerClient
 
     /// <inheritdoc />
     public Task<CronnerJob?> GetTaskByIdAsync(string id, CancellationToken cancellationToken = default) =>
-        _store.GetByIdAsync(id, cancellationToken);
+        _stores.UseAsync(store => store.GetByIdAsync(id, cancellationToken));
 
     /// <inheritdoc />
     public Task<IReadOnlyList<CronnerJob>> GetTasksAsync(
         CronnerTaskState? state = null, int offset = 0, int limit = 50, CancellationToken cancellationToken = default) =>
-        _store.GetAsync(state, offset, limit, cancellationToken);
+        _stores.UseAsync(store => store.GetAsync(state, offset, limit, cancellationToken));
 
     /// <inheritdoc />
     public IReadOnlyList<CronnerRegisteredTask> GetRegisteredTasks() =>
@@ -44,7 +44,7 @@ public sealed class CronnerClient : ICronnerClient
     /// <inheritdoc />
     public async Task TriggerNowAsync(string id, CancellationToken cancellationToken = default)
     {
-        var job = await _store.GetByIdAsync(id, cancellationToken).ConfigureAwait(false)
+        var job = await _stores.UseAsync(store => store.GetByIdAsync(id, cancellationToken)).ConfigureAwait(false)
                   ?? throw new CronnerTaskNotFoundException(id);
 
         // If a run is already in progress, queue the trigger so it fires right after — never overlap.
@@ -56,7 +56,7 @@ public sealed class CronnerClient : ICronnerClient
 
         job.NextRunUtc = DateTimeOffset.UtcNow;
         job.State = CronnerTaskState.Scheduled;
-        await _store.UpsertAsync(job, cancellationToken).ConfigureAwait(false);
+        await _stores.UseAsync(store => store.UpsertAsync(job, cancellationToken)).ConfigureAwait(false);
 
         _signal.Signal();
     }
@@ -96,7 +96,7 @@ public sealed class CronnerClient : ICronnerClient
             UpdatedUtc = now,
         };
 
-        await _store.UpsertAsync(job, cancellationToken).ConfigureAwait(false);
+        await _stores.UseAsync(store => store.UpsertAsync(job, cancellationToken)).ConfigureAwait(false);
 
         if (due <= now)
             _signal.Signal();
@@ -107,12 +107,12 @@ public sealed class CronnerClient : ICronnerClient
     /// <inheritdoc />
     public Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
         string taskId, int limit = 50, CancellationToken cancellationToken = default) =>
-        _store.GetExecutionsAsync(taskId, limit, cancellationToken);
+        _stores.UseAsync(store => store.GetExecutionsAsync(taskId, limit, cancellationToken));
 
     /// <inheritdoc />
     public async Task CancelTaskAsync(string id, CancellationToken cancellationToken = default)
     {
-        var job = await _store.GetByIdAsync(id, cancellationToken).ConfigureAwait(false)
+        var job = await _stores.UseAsync(store => store.GetByIdAsync(id, cancellationToken)).ConfigureAwait(false)
                   ?? throw new CronnerTaskNotFoundException(id);
 
         // Signal a running execution to stop; the worker will persist the final Cancelled state.
@@ -123,7 +123,7 @@ public sealed class CronnerClient : ICronnerClient
             job.NextRunUtc = null;
             job.LockOwner = null;
             job.LockedUntilUtc = null;
-            await _store.UpsertAsync(job, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.UpsertAsync(job, cancellationToken)).ConfigureAwait(false);
         }
     }
 }

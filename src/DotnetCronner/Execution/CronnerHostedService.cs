@@ -16,7 +16,7 @@ namespace DotnetCronner;
 public sealed class CronnerHostedService : BackgroundService
 {
     private readonly IServiceProvider _services;
-    private readonly ICronnerStore _store;
+    private readonly CronnerStoreAccessor _stores;
     private readonly CronnerRegistry _registry;
     private readonly CronnerScheduleCalculator _calculator;
     private readonly CronnerScheduleSignal _signal;
@@ -31,7 +31,7 @@ public sealed class CronnerHostedService : BackgroundService
     /// <summary>Creates the hosted service.</summary>
     public CronnerHostedService(
         IServiceProvider services,
-        ICronnerStore store,
+        CronnerStoreAccessor stores,
         CronnerRegistry registry,
         CronnerScheduleCalculator calculator,
         CronnerScheduleSignal signal,
@@ -42,7 +42,7 @@ public sealed class CronnerHostedService : BackgroundService
         ILogger<CronnerHostedService> logger)
     {
         _services = services;
-        _store = store;
+        _stores = stores;
         _registry = registry;
         _calculator = calculator;
         _signal = signal;
@@ -116,24 +116,14 @@ public sealed class CronnerHostedService : BackgroundService
         {
             try
             {
-                var existing = await _store.GetByIdAsync(descriptor.Id, cancellationToken).ConfigureAwait(false);
+                var existing = await _stores.UseAsync(store => store.GetByIdAsync(descriptor.Id, cancellationToken)).ConfigureAwait(false);
                 if (existing is null)
                 {
                     var next = _calculator.GetNextOccurrence(descriptor.CronString, now, _options.TimeZone);
                     var neverFires = NeverFires(descriptor, next);
                     if (neverFires)
                         neverFiring.Add(descriptor.Id);
-                    await _store.UpsertAsync(new CronnerJob
-                    {
-                        Id = descriptor.Id,
-                        Name = descriptor.Name,
-                        CronExpression = descriptor.CronString,
-                        Priority = descriptor.Priority,
-                        NextRunUtc = next,
-                        State = neverFires ? CronnerTaskState.Failed
-                              : next is not null ? CronnerTaskState.Scheduled : CronnerTaskState.Idle,
-                        LastError = neverFires ? NeverFiresMessage : null,
-                    }, cancellationToken).ConfigureAwait(false);
+                    await _stores.UseAsync(store => store.UpsertAsync(new CronnerJob { Id = descriptor.Id, Name = descriptor.Name, CronExpression = descriptor.CronString, Priority = descriptor.Priority, NextRunUtc = next, State = neverFires ? CronnerTaskState.Failed : next is not null ? CronnerTaskState.Scheduled : CronnerTaskState.Idle, LastError = neverFires ? NeverFiresMessage : null, }, cancellationToken)).ConfigureAwait(false);
                 }
                 else
                 {
@@ -157,7 +147,7 @@ public sealed class CronnerHostedService : BackgroundService
                         }
                     }
 
-                    await _store.UpsertAsync(existing, cancellationToken).ConfigureAwait(false);
+                    await _stores.UseAsync(store => store.UpsertAsync(existing, cancellationToken)).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -196,8 +186,9 @@ public sealed class CronnerHostedService : BackgroundService
         {
             try
             {
-                var due = await _store
-                    .AcquireDueAsync(DateTimeOffset.UtcNow, _owner, _options.LockTtl, _options.MaxConcurrentTasks, stoppingToken)
+                var due = await _stores
+                    .UseAsync(store => store.AcquireDueAsync(
+                        DateTimeOffset.UtcNow, _owner, _options.LockTtl, _options.MaxConcurrentTasks, stoppingToken))
                     .ConfigureAwait(false);
 
                 foreach (var job in due)
@@ -505,8 +496,9 @@ public sealed class CronnerHostedService : BackgroundService
             bool renewed;
             try
             {
-                renewed = await _store
-                    .RenewLockAsync(job.Id, _owner, DateTimeOffset.UtcNow + _options.LockTtl, stopHeartbeat)
+                renewed = await _stores
+                    .UseAsync(store => store.RenewLockAsync(
+                        job.Id, _owner, DateTimeOffset.UtcNow + _options.LockTtl, stopHeartbeat))
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stopHeartbeat.IsCancellationRequested)
@@ -545,7 +537,7 @@ public sealed class CronnerHostedService : BackgroundService
     private async Task FinalizeConcurrentAsync(string id, Exception? failure, CancellationToken cancellationToken)
     {
         // The schedule already moved on; only record the outcome without clobbering it.
-        var latest = await _store.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        var latest = await _stores.UseAsync(store => store.GetByIdAsync(id, cancellationToken)).ConfigureAwait(false);
         if (latest is null)
             return;
 
@@ -609,7 +601,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.UpsertAsync(job, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.UpsertAsync(job, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -621,7 +613,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.UpdateProgressAsync(id, progress, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.UpdateProgressAsync(id, progress, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -633,7 +625,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.PruneCompletedOneOffsAsync(definitionId, keepNewest, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.PruneCompletedOneOffsAsync(definitionId, keepNewest, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -645,7 +637,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.RecordExecutionStartedAsync(execution, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.RecordExecutionStartedAsync(execution, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -657,7 +649,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.RecordExecutionFinishedAsync(execution, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.RecordExecutionFinishedAsync(execution, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -669,7 +661,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.PruneExecutionsAsync(jobId, keepNewest, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.PruneExecutionsAsync(jobId, keepNewest, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -681,7 +673,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.OnStartAsync(job, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.OnStartAsync(job, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -693,7 +685,7 @@ public sealed class CronnerHostedService : BackgroundService
     {
         try
         {
-            await _store.OnCloseAsync(job, cancellationToken).ConfigureAwait(false);
+            await _stores.UseAsync(store => store.OnCloseAsync(job, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

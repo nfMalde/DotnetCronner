@@ -56,7 +56,7 @@ docker compose up -d --force-recreate crontestapp
 
 | Variable | Values | What it tests |
 | --- | --- | --- |
-| `CRONNER_STORE` | `memory`, `redis`, `ef-postgres`, `ef-postgres-appcontext`, `custom` | Every `ICronnerStore` path (see below) |
+| `CRONNER_STORE` | `memory`, `redis`, `ef-postgres`, `ef-postgres-appcontext`, `custom`, `scoped`, `scoped-broken` | Every `ICronnerStore` path (see below) |
 | `CRONNER_CACHE` | `none`, `redis` | `UseSecondLevelCache(c => c.UseRedisCacheProvider(...))` |
 | `CRONNER_DISCOVERY` | `auto`, `filtered`, `off` | `AutoDiscoverFromAssembly` / `AutoDiscoverFromType` / `DisableAutoDiscovery` |
 | `CRONNER_JOB_SERVICES` | `app`, `dedicated` | App provider vs. `WithDedicatedDI(...)` |
@@ -75,7 +75,7 @@ docker compose up -d --force-recreate crontestapp
 | `CRONNER_POSTGRES` | Npgsql connection string | EF Core stores |
 | `CRONNER_CUSTOM_STORE_FILE` | path | Where the custom JSON store persists |
 
-### The five store modes
+### The seven store modes
 
 | `CRONNER_STORE` | Wiring under test | Needs |
 | --- | --- | --- |
@@ -84,6 +84,25 @@ docker compose up -d --force-recreate crontestapp
 | `ef-postgres` | `UseEntityFrameworkStore(o => o.UseNpgsql(...))` with the package's `CronnerDbContext` | `postgres` service |
 | `ef-postgres-appcontext` | `UseEntityFrameworkStore<AppDbContext>()` — this app's own context implementing `ICronnerDbContext` + `ApplyCronnerModel()` | `postgres` service |
 | `custom` | `UseStore<JsonFileCronnerStore>()` — a hand-written `ICronnerStore` over a JSON file | — |
+| `scoped` | `UseStore<ScopedSqliteCronnerStore>(CronnerStoreLifetime.Scoped)` — a store holding one open SQLite connection, built per scheduler operation | — |
+| `scoped-broken` | the same store as `Singleton`, so overlapping operations share one connection — **expected to fail**, see below | — |
+
+#### Verifying the store lifetime
+
+`scoped` and `scoped-broken` use the *same* store — the only difference is the lifetime it declares.
+`ScopedSqliteCronnerStore` holds one open connection and does no internal locking, which is exactly the
+shape of a `DbContext` or ORM session.
+
+Run with several registered tasks so the poll loop overlaps running jobs:
+
+- `CRONNER_STORE=scoped` — each scheduler operation gets its own instance and its own connection. Jobs
+  schedule and run cleanly.
+- `CRONNER_STORE=scoped-broken` — one instance is shared, so overlapping operations issue concurrent
+  commands on one connection and SQLite raises a concurrent-access error. This is the same failure that
+  appears as *"a command is already in progress"* (Npgsql) or *"a second operation was started on this
+  context instance"* (EF Core), and it is why the lifetime is declared rather than assumed.
+
+`scoped-broken` is a demonstration, not a configuration to copy.
 
 The EF schema is created with `EnsureCreatedAsync()` at startup (throwaway-database shortcut; real apps
 generate migrations and call `MigrateAsync()` — see `MIGRATIONS.md` in the EF store package).
