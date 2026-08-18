@@ -64,6 +64,11 @@ docker compose up -d --force-recreate crontestapp
 | `CRONNER_POLLING_MS` | e.g. `1000` | `PollingInterval` |
 | `CRONNER_MAX_CONCURRENT` | e.g. `8` | `MaxConcurrentTasks` |
 | `CRONNER_LOCK_TTL_SECONDS` | e.g. `20` | `LockTtl`, and therefore the keepalive interval (`LockTtl`/2) |
+| `CRONNER_KEEPALIVE_SECONDS` | `0` (= `LockTtl`/2), e.g. `10` | `WithKeepAliveInterval(...)` — pins the keepalive cadence independently of `LockTtl` |
+| `CRONNER_ONEOFF_RETENTION` | `0` (keep all), e.g. `20` | `WithOneOffRetention(N)` — newest N finished one-off instances per definition |
+| `CRONNER_EXEC_HISTORY` | `0` (off), e.g. `20` | `WithExecutionHistory(N)` — record execution history; see `GET /tasks/{id}/history` |
+| `CRONNER_HOOK_SCOPE` | `shared` (default), `isolated` | `CronnerOptions.HookScope` — default DI scope for terminal hooks |
+| `CRONNER_INVALID_SCHEDULE` | `mark-failed` (default), `throw` | `CronnerOptions.OnInvalidSchedule` — a never-firing cron marks the task Failed vs. fails startup |
 | `CRONNER_MAX_RETRIES` / `CRONNER_RETRY_DELAY_SECONDS` | e.g. `2` / `5` | `DefaultMaxRetries` / `RetryDelay` |
 | `CRONNER_SLOW_KEEPALIVE_MS` | `0` (off), e.g. `15000` | makes the global `OnKeepAlive` hook block — proves a slow hook cannot stretch the renewal cadence |
 | `CRONNER_REDIS`, `CRONNER_REDIS_KEY_PREFIX`, `CRONNER_REDIS_CACHE_TTL_SECONDS` | | Redis store & cache options |
@@ -114,8 +119,8 @@ nothing else writes to them.
 
 ## The task catalogue
 
-24 tasks, each one there to prove something. Attribute tasks live in `CronTestApp/Jobs`, lambda tasks are
-registered in `Configuration/CronnerSetup.cs`.
+Two dozen-odd tasks, each one there to prove something. Attribute tasks live in `CronTestApp/Jobs`, lambda
+tasks are registered in `Configuration/CronnerSetup.cs`.
 
 ### `[CronnerTask]` attribute tasks
 
@@ -127,12 +132,13 @@ registered in `Configuration/CronnerSetup.cs`.
 | `attr:business-hours` | `0,30 8-18/2 * * MON-FRI` | lists, ranges, steps, day names |
 | `attr:daily-0330` | `30 3 * * ?` | `?` alias, and the effect of `CRONNER_TIMEZONE` |
 | `attr:manual` | *(none)* | manual/one-shot task — only runs via `POST /tasks/attr:manual/run` |
+| `enqueue:notify` | *(none)* | enqueue-only `[CronnerTask]` — run one-off instances with a typed payload via `POST /enqueue/notify` |
 | `CronTestApp.Jobs.AttributeJobs.AutoNamedTask` | `*/30 * * * * *` | id derived from `Type.Method` when none is given |
 | `attr:static` | `*/45 * * * * *` | a **static** task method, all parameters from DI |
 | `conc:drop` | `*/5 * * * * *` | `DropAndForget` — a 12s run swallows the ticks it overlaps |
 | `conc:queue` | `*/5 * * * * *` | `Queue` — an 8s run, missed ticks run back-to-back |
 | `conc:parallel` | `*/5 * * * * *` | `Concurrent` — runs overlap (watch `inFlight`) |
-| `progress:import` | `*/30 * * * * *` | `ICronnerJobContext` by constructor injection: total progress + two named scopes |
+| `progress:import` | `*/30 * * * * *` | `ICronnerJobContext` by constructor injection: total + two named scopes, each report carrying a custom payload (`note` in `/progress`); sets `SetExecutionData` + run-state bag |
 | `lock:keepalive` | *(none)* | a 35s run under a 20s `LockTtl` — the keepalive renews the claim (`OnLockAcquire`, several `OnKeepAlive`, `OnLockRelease`) |
 | `lock:stealable` | *(none)* | steal its claim with `steal-lock` → the next renewal fails, the run is cancelled, `OnLockLost` fires |
 | `cancel:long-runner` | *(none)* | honours its token: run it, then cancel it, and `OnCancel` fires |
@@ -148,7 +154,7 @@ registered in `Configuration/CronnerSetup.cs`.
 | `lambda:service` | `*/25 * * * * *` | `HasParam<IGreeter>()`, `HasParam<ScopeMarker>()` (a new scope id each run) |
 | `lambda:tenant` | `*/35 * * * * *` | the factory overload `HasParam<Tenant>(sp => …)` |
 | `lambda:import` | `*/15 * * * * *` | an **async** target — the returned `Task` is awaited |
-| `progress:reindex` | `*/45 * * * * *` | `HasParam<ICronnerJobContext>()` + **every per-schedule hook style** |
+| `progress:reindex` | `*/45 * * * * *` | `HasParam<ICronnerJobContext>()` + **every per-schedule hook style**; sends a per-step progress payload the delegate hook logs |
 | `CronTestApp.Jobs.LambdaJobs.SayHello` | `0 * * * *` | the short `Sched(expr, "cron")` overload |
 | `lambda:manual` | *(none)* | a lambda task with no cron → manual only |
 
@@ -162,9 +168,13 @@ registered in `Configuration/CronnerSetup.cs`.
 | Method-call expression | the same registration | `OnStart<AuditHook>(h => h.Record(h.HasParam<JobActivityLog>(), …))` and its async twin |
 
 In `dedicated` DI mode the hook classes are registered in the dedicated container instead, since hooks
-resolve from whichever provider runs the jobs. Every hook invocation gets its own fresh scope —
-`LoggingHook.OnTotalProgressChangeAsync` deliberately uses `context.HasParam<T>()` instead of constructor
-injection to prove that scope works.
+resolve from whichever provider runs the jobs. **Lock and progress hooks always run in their own fresh
+scope**; **terminal hooks** (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) run in the **job's** scope by default
+(`CRONNER_HOOK_SCOPE=shared`) so they can read the job's scoped state — set `CRONNER_HOOK_SCOPE=isolated` to
+flip the default, or pass a scope to `AddHook`/`WithHook` to pin a single hook. `LoggingHook`'s progress
+methods use `context.HasParam<T>()` to prove they resolve from the hook's own scope. The global delegate
+hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJobs.ImportSummary>()`) and
+`OnFail` logs `context.WillRetry`.
 
 ---
 

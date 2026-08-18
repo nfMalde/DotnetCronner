@@ -508,7 +508,9 @@ running twice at once.
 
 Two runnable samples live in [`samples/`](samples):
 
-- **`DotnetCronner.Sample.WebApi`** — a minimal quickstart.
+- **`DotnetCronner.Sample.WebApi`** — a minimal quickstart: attribute + lambda tasks, execution history, and
+  a progress job whose reports carry custom payloads, over a handful of `ICronnerClient` endpoints
+  (`/tasks`, `/tasks/{id}/history`, `/progress`).
 - **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes,
   all twelve hooks in every registration style, progress, the keepalive and lock loss, discovery and DI
   modes), driven entirely by a `.env` file. It's a **Docker Compose** project (app + Redis + PostgreSQL) —
