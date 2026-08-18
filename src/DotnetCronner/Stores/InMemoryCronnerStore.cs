@@ -10,6 +10,8 @@ namespace DotnetCronner;
 public sealed class InMemoryCronnerStore : ICronnerStore
 {
     private readonly ConcurrentDictionary<string, CronnerJob> _jobs = new(StringComparer.Ordinal);
+    // Execution-history records keyed by their per-run correlation id (CronnerJobExecution.Id).
+    private readonly ConcurrentDictionary<string, CronnerJobExecution> _executions = new(StringComparer.Ordinal);
     private readonly object _acquireGate = new();
 
     /// <inheritdoc />
@@ -48,6 +50,9 @@ public sealed class InMemoryCronnerStore : ICronnerStore
     public Task RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         _jobs.TryRemove(id, out _);
+        // Cascade: a removed job takes its execution history with it.
+        foreach (var execution in _executions.Values.Where(e => e.JobId == id).ToArray())
+            _executions.TryRemove(execution.Id, out _);
         return Task.CompletedTask;
     }
 
@@ -117,6 +122,51 @@ public sealed class InMemoryCronnerStore : ICronnerStore
             job.Progress = progress;
             job.UpdatedUtc = DateTimeOffset.UtcNow;
         }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        _executions[execution.Id] = execution.Clone();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        // Finalize the row inserted at start (overwrite by correlation id); tolerate a missing start.
+        _executions[execution.Id] = execution.Clone();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string jobId, int limit, CancellationToken cancellationToken = default)
+    {
+        var page = _executions.Values
+            .Where(e => e.JobId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id, StringComparer.Ordinal)
+            .Take(Math.Max(0, limit))
+            .Select(e => e.Clone())
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyList<CronnerJobExecution>>(page);
+    }
+
+    /// <inheritdoc />
+    public Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        var stale = _executions.Values
+            .Where(e => e.JobId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id, StringComparer.Ordinal)
+            .Skip(Math.Max(0, keepNewest))
+            .ToArray();
+        foreach (var execution in stale)
+            _executions.TryRemove(execution.Id, out _);
 
         return Task.CompletedTask;
     }

@@ -10,4 +10,7 @@ public interface ICronnerDbContext
 {
     /// <summary>The scheduled tasks table.</summary>
     DbSet<CronnerJobEntity> CronnerJobs { get; }
+
+    /// <summary>The execution-history table (one row per run). Populated only when execution history is enabled.</summary>
+    DbSet<CronnerJobExecutionEntity> CronnerJobExecutions { get; }
 }

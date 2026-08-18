@@ -19,6 +19,9 @@ public class CronnerDbContext : DbContext, ICronnerDbContext
     public DbSet<CronnerJobEntity> CronnerJobs => Set<CronnerJobEntity>();
 
     /// <inheritdoc />
+    public DbSet<CronnerJobExecutionEntity> CronnerJobExecutions => Set<CronnerJobExecutionEntity>();
+
+    /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

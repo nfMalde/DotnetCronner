@@ -22,6 +22,9 @@ public sealed class JsonFileCronnerStore : ICronnerStore
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, RunSession> _sessions = new();
+    // Execution history, keyed by each run's correlation id. Kept in memory to keep the sample small; a
+    // durable store would persist these next to the jobs (the EF Core and Redis stores do).
+    private readonly ConcurrentDictionary<string, CronnerJobExecution> _executions = new(StringComparer.Ordinal);
     private readonly string _path;
     private readonly ILogger<JsonFileCronnerStore> _logger;
     private readonly JobActivityLog _activity;
@@ -106,6 +109,10 @@ public sealed class JsonFileCronnerStore : ICronnerStore
             var jobs = await LoadAsync(cancellationToken).ConfigureAwait(false);
             if (jobs.Remove(id))
                 await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
+
+            // Cascade: a removed job takes its execution history with it.
+            foreach (var execution in _executions.Values.Where(e => e.JobId == id).ToArray())
+                _executions.TryRemove(execution.Id, out _);
         }
         finally
         {
@@ -229,6 +236,56 @@ public sealed class JsonFileCronnerStore : ICronnerStore
         {
             _gate.Release();
         }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Inserts a Running history record at the start of a run (finalized by RecordExecutionFinishedAsync).</remarks>
+    public Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        _executions[execution.Id] = execution.Clone();
+        _activity.Record(execution.JobId, $"[store] execution {execution.Id[..8]} started (attempt {execution.Attempt})");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Finalizes the record inserted at start (matched on the correlation id) with the terminal status.</remarks>
+    public Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        _executions[execution.Id] = execution.Clone();
+        _activity.Record(execution.JobId, $"[store] execution {execution.Id[..8]} finished: {execution.Status}");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Newest-first history for a task, as surfaced by GET /tasks/{id}/history.</remarks>
+    public Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string jobId, int limit, CancellationToken cancellationToken = default)
+    {
+        var page = _executions.Values
+            .Where(e => e.JobId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id, StringComparer.Ordinal)
+            .Take(Math.Max(0, limit))
+            .Select(e => e.Clone())
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyList<CronnerJobExecution>>(page);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>History retention: keep only the newest N runs per task, pruned after each run finishes.</remarks>
+    public Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        var stale = _executions.Values
+            .Where(e => e.JobId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id, StringComparer.Ordinal)
+            .Skip(Math.Max(0, keepNewest))
+            .ToArray();
+        foreach (var execution in stale)
+            _executions.TryRemove(execution.Id, out _);
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

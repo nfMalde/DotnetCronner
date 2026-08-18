@@ -16,14 +16,43 @@ public interface ICronnerJobContext
     /// <summary>The most recent total progress reported for this execution.</summary>
     decimal TotalProgress { get; }
 
-    /// <summary>Reports total progress (fire-and-forget; hooks run in the background and are drained before the terminal hook).</summary>
-    void Progress(decimal value);
+    /// <summary>
+    /// Reports total progress (fire-and-forget; hooks run in the background and are drained before the
+    /// terminal hook). Pass an optional <paramref name="payload"/> — any object — delivered to the
+    /// <c>OnTotalProgressChange</c> hook as <see cref="CronnerTaskContext.ProgressPayload"/> for this report
+    /// (e.g. the current step name).
+    /// </summary>
+    void Progress(decimal value, object? payload = null);
 
-    /// <summary>Reports total progress and awaits the <c>OnTotalProgressChange</c> hooks.</summary>
-    Task ProgressAsync(decimal value);
+    /// <summary>Reports total progress and awaits the <c>OnTotalProgressChange</c> hooks. See <see cref="Progress"/> for <paramref name="payload"/>.</summary>
+    Task ProgressAsync(decimal value, object? payload = null);
 
-    /// <summary>Opens a progress scope for a subtask/category. Dispose it (or <c>await using</c>) to close it.</summary>
-    ICronnerProgressScope OpenProgressScope(string? category = null);
+    /// <summary>
+    /// Opens a progress scope for a subtask/category. Dispose it (or <c>await using</c>) to close it. The
+    /// optional <paramref name="payload"/> is delivered to the <c>OnProgressScopeOpened</c> hook.
+    /// </summary>
+    ICronnerProgressScope OpenProgressScope(string? category = null, object? payload = null);
+
+    /// <summary>
+    /// Stores <paramref name="value"/> in this run's state bag under its type, for a hook of the same run to
+    /// read via <see cref="CronnerTaskContext.Get{T}"/> — including on the failure path (<c>OnFail</c>). The
+    /// bag is per run, so concurrent runs never share it. (<c>OnStart</c> fires before the job body, so it
+    /// cannot see values set here.)
+    /// </summary>
+    void Set<T>(T value) where T : notnull;
+
+    /// <summary>Reads a value previously placed in this run's state bag, or its default if none is set.</summary>
+    T? Get<T>();
+
+    /// <summary>Reads a value from this run's state bag; returns <c>false</c> if none of type <typeparamref name="T"/> is set.</summary>
+    bool TryGet<T>(out T value);
+
+    /// <summary>
+    /// Sets the object persisted (as JSON) onto this run's execution-history record (its <c>Data</c> slot),
+    /// so a store row can carry your own summary/log reference alongside the built-in fields. Requires
+    /// execution history to be enabled; <c>null</c> writes no data.
+    /// </summary>
+    void SetExecutionData(object? data);
 }
 
 /// <summary>A subtask/category progress scope opened from <see cref="ICronnerJobContext.OpenProgressScope"/>.</summary>
@@ -38,11 +67,11 @@ public interface ICronnerProgressScope : IDisposable, IAsyncDisposable
     /// <summary>The most recent progress reported to this scope.</summary>
     decimal Value { get; }
 
-    /// <summary>Reports scope progress (fire-and-forget).</summary>
-    void Progress(decimal value);
+    /// <summary>Reports scope progress (fire-and-forget). The optional <paramref name="payload"/> reaches the <c>OnScopeProgress</c> hook.</summary>
+    void Progress(decimal value, object? payload = null);
 
-    /// <summary>Reports scope progress and awaits the <c>OnScopeProgress</c> hooks.</summary>
-    Task ProgressAsync(decimal value);
+    /// <summary>Reports scope progress and awaits the <c>OnScopeProgress</c> hooks. See <see cref="Progress"/> for <paramref name="payload"/>.</summary>
+    Task ProgressAsync(decimal value, object? payload = null);
 }
 
 /// <summary>An immutable snapshot of a progress scope, handed to progress hooks via <see cref="CronnerTaskContext.ProgressScope"/>.</summary>

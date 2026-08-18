@@ -7,16 +7,20 @@ namespace DotnetCronner;
 /// invocation (via DI, falling back to construction). Backs <c>AddHook&lt;T&gt;()</c> / <c>WithHook&lt;T&gt;()</c>
 /// so a hook type works whether configured at <c>AddDotnetCronner</c> or <c>app.UseDotnetCronner</c> time.
 /// </summary>
-internal sealed class ResolvedCronnerTaskHook : ICronnerTaskHook
+internal sealed class ResolvedCronnerTaskHook : ICronnerTaskHook, ICronnerScopedHook
 {
     private readonly Type _hookType;
 
-    public ResolvedCronnerTaskHook(Type hookType)
+    public ResolvedCronnerTaskHook(Type hookType, CronnerHookScope? scope = null)
     {
         if (!typeof(ICronnerTaskHook).IsAssignableFrom(hookType))
             throw new ArgumentException($"{hookType} must implement {nameof(ICronnerTaskHook)}.", nameof(hookType));
         _hookType = hookType;
+        PreferredScope = scope;
     }
+
+    /// <inheritdoc />
+    public CronnerHookScope? PreferredScope { get; }
 
     private Task Dispatch(CronnerHookEvent hookEvent, CronnerTaskContext context)
     {

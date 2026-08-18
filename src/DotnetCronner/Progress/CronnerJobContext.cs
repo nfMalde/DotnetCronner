@@ -1,7 +1,7 @@
 namespace DotnetCronner;
 
 /// <summary>Emits a progress event to the hook pipeline. Set by the scheduler when a run begins.</summary>
-internal delegate Task CronnerProgressEmitter(CronnerHookEvent hookEvent, decimal totalProgress, CronnerProgressInfo? scope);
+internal delegate Task CronnerProgressEmitter(CronnerHookEvent hookEvent, decimal totalProgress, CronnerProgressInfo? scope, object? payload);
 
 /// <summary>
 /// The default scoped <see cref="ICronnerJobContext"/>. The scheduler resolves it from the execution
@@ -14,6 +14,7 @@ internal sealed class CronnerJobContext : ICronnerJobContext
     private readonly object _gate = new();
     private readonly List<Task> _pending = [];
     private CronnerProgressEmitter? _emitter;
+    private CronnerRunState? _runState;
     private int _scopeCounter;
 
     public decimal TotalProgress { get; private set; }
@@ -21,37 +22,59 @@ internal sealed class CronnerJobContext : ICronnerJobContext
     /// <summary>Wires the emitter for this run. Called by the scheduler; a task never calls this.</summary>
     internal void Initialize(CronnerProgressEmitter emitter) => _emitter = emitter;
 
-    public void Progress(decimal value)
+    /// <summary>Attaches this run's shared state bag. Called by the scheduler; a task never calls this.</summary>
+    internal void AttachRunState(CronnerRunState runState) => _runState = runState;
+
+    public void Set<T>(T value) where T : notnull => _runState?.Set(value);
+
+    public T? Get<T>() => _runState is { } state ? state.Get<T>() : default;
+
+    public bool TryGet<T>(out T value)
     {
-        TotalProgress = value;
-        Track(Emit(CronnerHookEvent.TotalProgressChange, value, null));
+        if (_runState is { } state)
+            return state.TryGet(out value);
+
+        value = default!;
+        return false;
     }
 
-    public Task ProgressAsync(decimal value)
+    public void SetExecutionData(object? data)
     {
-        TotalProgress = value;
-        return Emit(CronnerHookEvent.TotalProgressChange, value, null);
+        if (_runState is { } state)
+            state.ExecutionData = data;
     }
 
-    public ICronnerProgressScope OpenProgressScope(string? category = null)
+    public void Progress(decimal value, object? payload = null)
+    {
+        TotalProgress = value;
+        Track(Emit(CronnerHookEvent.TotalProgressChange, value, null, payload));
+    }
+
+    public Task ProgressAsync(decimal value, object? payload = null)
+    {
+        TotalProgress = value;
+        return Emit(CronnerHookEvent.TotalProgressChange, value, null, payload);
+    }
+
+    public ICronnerProgressScope OpenProgressScope(string? category = null, object? payload = null)
     {
         var id = $"scope-{Interlocked.Increment(ref _scopeCounter)}";
         var scope = new CronnerProgressScope(this, id, category);
-        Track(Emit(CronnerHookEvent.ProgressScopeOpened, TotalProgress, scope.Snapshot()));
+        Track(Emit(CronnerHookEvent.ProgressScopeOpened, TotalProgress, scope.Snapshot(), payload));
         return scope;
     }
 
-    internal void ReportScope(CronnerProgressScope scope) =>
-        Track(Emit(CronnerHookEvent.ScopeProgress, TotalProgress, scope.Snapshot()));
+    internal void ReportScope(CronnerProgressScope scope, object? payload) =>
+        Track(Emit(CronnerHookEvent.ScopeProgress, TotalProgress, scope.Snapshot(), payload));
 
-    internal Task ReportScopeAsync(CronnerProgressScope scope) =>
-        Emit(CronnerHookEvent.ScopeProgress, TotalProgress, scope.Snapshot());
+    internal Task ReportScopeAsync(CronnerProgressScope scope, object? payload) =>
+        Emit(CronnerHookEvent.ScopeProgress, TotalProgress, scope.Snapshot(), payload);
 
     internal void CloseScope(CronnerProgressScope scope) =>
-        Track(Emit(CronnerHookEvent.ProgressScopeClosed, TotalProgress, scope.Snapshot()));
+        Track(Emit(CronnerHookEvent.ProgressScopeClosed, TotalProgress, scope.Snapshot(), null));
 
     internal Task CloseScopeAsync(CronnerProgressScope scope) =>
-        Emit(CronnerHookEvent.ProgressScopeClosed, TotalProgress, scope.Snapshot());
+        Emit(CronnerHookEvent.ProgressScopeClosed, TotalProgress, scope.Snapshot(), null);
 
     /// <summary>Awaits any fire-and-forget progress hooks started during the run.</summary>
     internal async Task DrainAsync()
@@ -67,8 +90,8 @@ internal sealed class CronnerJobContext : ICronnerJobContext
             await Task.WhenAll(pending).ConfigureAwait(false);
     }
 
-    private Task Emit(CronnerHookEvent hookEvent, decimal totalProgress, CronnerProgressInfo? scope) =>
-        _emitter?.Invoke(hookEvent, totalProgress, scope) ?? Task.CompletedTask;
+    private Task Emit(CronnerHookEvent hookEvent, decimal totalProgress, CronnerProgressInfo? scope, object? payload) =>
+        _emitter?.Invoke(hookEvent, totalProgress, scope, payload) ?? Task.CompletedTask;
 
     private void Track(Task task)
     {
@@ -99,16 +122,16 @@ internal sealed class CronnerProgressScope : ICronnerProgressScope
 
     public decimal Value { get; private set; }
 
-    public void Progress(decimal value)
+    public void Progress(decimal value, object? payload = null)
     {
         Value = value;
-        _owner.ReportScope(this);
+        _owner.ReportScope(this, payload);
     }
 
-    public Task ProgressAsync(decimal value)
+    public Task ProgressAsync(decimal value, object? payload = null)
     {
         Value = value;
-        return _owner.ReportScopeAsync(this);
+        return _owner.ReportScopeAsync(this, payload);
     }
 
     public void Dispose()

@@ -111,6 +111,7 @@ public sealed class CronnerHostedService : BackgroundService
     private async Task SeedAsync(CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
+        var neverFiring = new List<string>();
         foreach (var descriptor in _registry.Descriptors)
         {
             try
@@ -120,6 +121,8 @@ public sealed class CronnerHostedService : BackgroundService
                 {
                     var next = _calculator.GetNextOccurrence(descriptor.CronString, now, _options.TimeZone);
                     var neverFires = NeverFires(descriptor, next);
+                    if (neverFires)
+                        neverFiring.Add(descriptor.Id);
                     await _store.UpsertAsync(new CronnerJob
                     {
                         Id = descriptor.Id,
@@ -146,6 +149,7 @@ public sealed class CronnerHostedService : BackgroundService
                         {
                             existing.State = CronnerTaskState.Failed;
                             existing.LastError = NeverFiresMessage;
+                            neverFiring.Add(descriptor.Id);
                         }
                         else if (existing.NextRunUtc is not null)
                         {
@@ -161,6 +165,13 @@ public sealed class CronnerHostedService : BackgroundService
                 _logger.LogError(ex, "Failed to seed DotnetCronner task {TaskId}.", descriptor.Id);
             }
         }
+
+        // Fail-fast option: refuse to start when any task can never fire (see CronnerOptions.OnInvalidSchedule).
+        if (_options.OnInvalidSchedule == CronnerInvalidScheduleBehavior.Throw && neverFiring.Count > 0)
+            throw new InvalidOperationException(
+                $"DotnetCronner: {neverFiring.Count} task(s) have a cron expression that parses but never fires: " +
+                $"{string.Join(", ", neverFiring)}. Fix the expression(s), or set " +
+                "CronnerOptions.OnInvalidSchedule = MarkFailed to mark them Failed and start anyway.");
     }
 
     private const string NeverFiresMessage = "Cron expression parses but never produces a next occurrence.";
@@ -245,6 +256,9 @@ public sealed class CronnerHostedService : BackgroundService
         // One-off instances carry a unique Id but run the method of their definition; recurring jobs use Id.
         _registry.TryGet(job.DefinitionId ?? job.Id, out var descriptor);
 
+        // One state bag for the whole run, shared by the job and its keepalive/terminal hooks.
+        var runState = new CronnerRunState();
+
         // The claim happened in the poll loop; announce it as the worker takes the job.
         await FireLockHookAsync(CronnerHookEvent.LockAcquire, descriptor, job, stoppingToken).ConfigureAwait(false);
 
@@ -288,14 +302,14 @@ public sealed class CronnerHostedService : BackgroundService
         using var heartbeatCts = new CancellationTokenSource();
         var heartbeat = concurrent
             ? Task.FromResult(false)
-            : HeartbeatLoopAsync(descriptor, job, jobCts, heartbeatCts.Token);
+            : HeartbeatLoopAsync(descriptor, job, jobCts, heartbeatCts.Token, runState);
 
         bool cancelledByClient;
         Exception? failure;
         bool lockLost;
         try
         {
-            (cancelledByClient, failure) = await RunWithHooksAsync(descriptor, job, jobCts, stoppingToken).ConfigureAwait(false);
+            (cancelledByClient, failure) = await RunWithHooksAsync(descriptor, job, jobCts, runState, stoppingToken).ConfigureAwait(false);
         }
         finally
         {
@@ -348,15 +362,35 @@ public sealed class CronnerHostedService : BackgroundService
     }
 
     private Task FireLockHookAsync(
-        CronnerHookEvent hookEvent, CronnerJobDescriptor? descriptor, CronnerJob job, CancellationToken cancellationToken) =>
-        _hooks.DispatchAsync(hookEvent, _jobProvider, descriptor, job, TimeSpan.Zero, null, cancellationToken);
+        CronnerHookEvent hookEvent, CronnerJobDescriptor? descriptor, CronnerJob job,
+        CancellationToken cancellationToken, CronnerRunState? runState = null) =>
+        _hooks.DispatchAsync(hookEvent, _jobProvider, descriptor, job, TimeSpan.Zero, null, cancellationToken, runState: runState);
 
     private async Task<(bool Cancelled, Exception? Failure)> RunWithHooksAsync(
-        CronnerJobDescriptor descriptor, CronnerJob job, CancellationTokenSource jobCts, CancellationToken stoppingToken)
+        CronnerJobDescriptor descriptor, CronnerJob job, CancellationTokenSource jobCts, CronnerRunState runState,
+        CancellationToken stoppingToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var cancelled = false;
         Exception? failure = null;
+
+        // Execution history (opt-in via WithExecutionHistory): insert a Running record now and finalize it
+        // after the run. A per-run correlation id lets the store finalize the exact row even when a
+        // Concurrent-mode task has several runs of the same job id in flight at once.
+        CronnerJobExecution? execution = null;
+        if (_options.ExecutionHistoryRetentionCount > 0)
+        {
+            execution = new CronnerJobExecution
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                JobId = job.Id,
+                StartedAt = DateTimeOffset.UtcNow,
+                Status = JobExecutionStatus.Running,
+                Attempt = job.RetryCount + 1,
+                Owner = _owner,   // which scheduler instance ran this
+            };
+            await SafeRecordExecutionStartedAsync(execution, stoppingToken).ConfigureAwait(false);
+        }
 
         // The terminal lifecycle hooks (Start/Success/Fail/Cancel) run in the SAME scope as the task, so a
         // hook's ctx.HasParam<T>() resolves the very scoped instances the job used — e.g. a hook reads back
@@ -366,9 +400,11 @@ public sealed class CronnerHostedService : BackgroundService
             var sp = scope.ServiceProvider;
 
             // Wire the progress context the task resolves from this same scope; reports reach the hooks and,
-            // for total progress, are persisted via a targeted update that never touches the lock.
+            // for total progress, are persisted via a targeted update that never touches the lock. The same
+            // scoped context also carries the run-state bag, so the job can ctx.Set(...) for its hooks.
             var progress = sp.GetService<CronnerJobContext>();
-            progress?.Initialize((hookEvent, total, scopeInfo) =>
+            progress?.AttachRunState(runState);
+            progress?.Initialize((hookEvent, total, scopeInfo, payload) =>
             {
                 if (hookEvent == CronnerHookEvent.TotalProgressChange)
                 {
@@ -376,10 +412,12 @@ public sealed class CronnerHostedService : BackgroundService
                     _ = SafeUpdateProgressAsync(job.Id, total, stoppingToken);
                 }
 
-                return _hooks.DispatchAsync(hookEvent, _jobProvider, descriptor, job, TimeSpan.Zero, null, stoppingToken, total, scopeInfo);
+                return _hooks.DispatchAsync(
+                    hookEvent, _jobProvider, descriptor, job, TimeSpan.Zero, null, stoppingToken, total, scopeInfo, runState,
+                    progressPayload: payload);
             });
 
-            await _hooks.DispatchInScopeAsync(CronnerHookEvent.Start, sp, descriptor, job, TimeSpan.Zero, null, stoppingToken)
+            await DispatchLifecycleAsync(CronnerHookEvent.Start, sp, descriptor, job, TimeSpan.Zero, null, runState, false, stoppingToken)
                 .ConfigureAwait(false);
 
             try
@@ -403,12 +441,40 @@ public sealed class CronnerHostedService : BackgroundService
             var terminal = cancelled
                 ? CronnerHookEvent.Cancel
                 : failure is not null ? CronnerHookEvent.Fail : CronnerHookEvent.Success;
-            await _hooks.DispatchInScopeAsync(terminal, sp, descriptor, job, stopwatch.Elapsed, failure, stoppingToken)
+            // On failure, tell the Fail hook whether a retry is still coming (so it can hold off on alerting).
+            var willRetry = terminal == CronnerHookEvent.Fail && job.RetryCount < _options.DefaultMaxRetries;
+            await DispatchLifecycleAsync(terminal, sp, descriptor, job, stopwatch.Elapsed, failure, runState, willRetry, stoppingToken)
                 .ConfigureAwait(false);
+        }
+
+        // Finalize the history record (terminal status + finish time + error + any consumer data), then trim.
+        if (execution is not null)
+        {
+            execution.FinishedAt = DateTimeOffset.UtcNow;
+            execution.Status = cancelled ? JobExecutionStatus.Cancelled
+                : failure is not null ? JobExecutionStatus.Failed : JobExecutionStatus.Succeeded;
+            execution.Error = failure?.Message;
+            execution.Data = SerializeExecutionData(runState.ExecutionData);
+            await SafeRecordExecutionFinishedAsync(execution, stoppingToken).ConfigureAwait(false);
+            await SafePruneExecutionsAsync(job.Id, _options.ExecutionHistoryRetentionCount, stoppingToken).ConfigureAwait(false);
         }
 
         return (cancelled, failure);
     }
+
+    // Terminal lifecycle hooks (Start/Success/Fail/Cancel) are routed per hook: each uses its own scope
+    // preference (set via AddHook/WithHook) or, when it set none, CronnerOptions.HookScope — Shared runs it in
+    // the job's execution scope (so ctx.HasParam<T>() resolves the job's scoped instances), Isolated gives it
+    // its own fresh scope. Either way the run-state bag is threaded through.
+    private Task DispatchLifecycleAsync(
+        CronnerHookEvent hookEvent, IServiceProvider jobScope, CronnerJobDescriptor descriptor, CronnerJob job,
+        TimeSpan duration, Exception? exception, CronnerRunState runState, bool willRetry, CancellationToken cancellationToken) =>
+        _hooks.DispatchTerminalAsync(
+            hookEvent, jobScope, _jobProvider, descriptor, job, duration, exception, cancellationToken,
+            _options.HookScope, runState, willRetry);
+
+    private static string? SerializeExecutionData(object? data) =>
+        data is null ? null : CronnerPayloadSerializer.Serialize(data, data.GetType());
 
     /// <summary>
     /// Keeps the execution lock alive while a task runs. Renews about halfway through the TTL so a slow
@@ -416,7 +482,8 @@ public sealed class CronnerHostedService : BackgroundService
     /// (the run was cancelled to prevent a duplicate execution); <c>false</c> if it stopped normally.
     /// </summary>
     private async Task<bool> HeartbeatLoopAsync(
-        CronnerJobDescriptor descriptor, CronnerJob job, CancellationTokenSource jobCts, CancellationToken stopHeartbeat)
+        CronnerJobDescriptor descriptor, CronnerJob job, CancellationTokenSource jobCts, CancellationToken stopHeartbeat,
+        CronnerRunState runState)
     {
         var interval = _options.KeepAliveInterval is { } configured && configured > TimeSpan.Zero
             ? configured
@@ -466,7 +533,7 @@ public sealed class CronnerHostedService : BackgroundService
             // Fire the keepalive hook WITHOUT awaiting it, so user hook code (a slow query, a GC pause) can
             // never stretch the renewal cadence, cost the lock, or delay finalization. The dispatcher
             // swallows hook exceptions, so the detached task never faults.
-            _ = FireLockHookAsync(CronnerHookEvent.KeepAlive, descriptor, job, stopHeartbeat);
+            _ = FireLockHookAsync(CronnerHookEvent.KeepAlive, descriptor, job, stopHeartbeat, runState);
 
             // Hold a fixed renewal cadence regardless of how long the renewal took: the next renewal is one
             // interval after this one began, so the gap between renewals stays ~LockTtl/2 for any job length.
@@ -571,6 +638,42 @@ public sealed class CronnerHostedService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "DotnetCronner one-off retention pruning failed for definition {DefinitionId}.", definitionId);
+        }
+    }
+
+    private async Task SafeRecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _store.RecordExecutionStartedAsync(execution, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DotnetCronner failed to record execution start for task {TaskId}.", execution.JobId);
+        }
+    }
+
+    private async Task SafeRecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _store.RecordExecutionFinishedAsync(execution, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DotnetCronner failed to record execution finish for task {TaskId}.", execution.JobId);
+        }
+    }
+
+    private async Task SafePruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _store.PruneExecutionsAsync(jobId, keepNewest, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DotnetCronner execution-history pruning failed for task {TaskId}.", jobId);
         }
     }
 

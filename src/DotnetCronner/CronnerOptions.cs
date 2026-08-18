@@ -39,6 +39,33 @@ public sealed class CronnerOptions
     /// </summary>
     public int OneOffRetentionCount { get; set; }
 
+    /// <summary>
+    /// How many execution-history records to keep per task; older runs are pruned after each run finishes.
+    /// <c>0</c> (the default) disables execution-history recording entirely — no records are written. When
+    /// greater than zero, each run inserts a <see cref="JobExecutionStatus.Running"/> record and finalizes it
+    /// on completion, readable via <see cref="ICronnerClient.GetExecutionsAsync"/>. Requires a store that
+    /// persists history (the built-in in-memory, EF Core and Redis stores do; a custom store must implement
+    /// the <c>RecordExecution*</c> / <c>GetExecutions</c> / <c>PruneExecutions</c> methods).
+    /// </summary>
+    public int ExecutionHistoryRetentionCount { get; set; }
+
+    /// <summary>
+    /// The <em>default</em> DI scope for the terminal lifecycle hooks (<c>OnStart</c>/<c>OnSuccess</c>/
+    /// <c>OnFail</c>/<c>OnCancel</c>) — applied to any hook that did not choose its own scope. Defaults to
+    /// <see cref="CronnerHookScope.Shared"/> (the job's scope). Individual hooks can override it by passing a
+    /// scope to <c>AddHook</c> / <c>WithHook</c> (e.g. <see cref="CronnerHookScope.Isolated"/> so a hook that
+    /// writes through a single-session unit of work never contends with the job). Lock and progress hooks
+    /// always run isolated regardless of this setting.
+    /// </summary>
+    public CronnerHookScope HookScope { get; set; } = CronnerHookScope.Shared;
+
+    /// <summary>
+    /// What happens when a task's cron parses but never fires (e.g. 31 February). Defaults to
+    /// <see cref="CronnerInvalidScheduleBehavior.MarkFailed"/> (mark that task Failed, keep scheduling the
+    /// rest). Set to <see cref="CronnerInvalidScheduleBehavior.Throw"/> to fail host startup instead.
+    /// </summary>
+    public CronnerInvalidScheduleBehavior OnInvalidSchedule { get; set; } = CronnerInvalidScheduleBehavior.MarkFailed;
+
     /// <summary>Number of automatic retries after a failed execution. Defaults to 0 (no retry).</summary>
     public int DefaultMaxRetries { get; set; }
 

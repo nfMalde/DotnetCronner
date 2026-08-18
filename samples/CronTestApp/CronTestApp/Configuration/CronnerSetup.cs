@@ -45,6 +45,9 @@ public static class CronnerSetup
                 cronnerOptions.LockTtl = options.LockTtl;
                 cronnerOptions.KeepAliveInterval = options.KeepAliveInterval;
                 cronnerOptions.OneOffRetentionCount = options.OneOffRetention;
+                cronnerOptions.ExecutionHistoryRetentionCount = options.ExecutionHistory;
+                cronnerOptions.HookScope = options.HookScope;
+                cronnerOptions.OnInvalidSchedule = options.OnInvalidSchedule;
                 cronnerOptions.DefaultMaxRetries = options.MaxRetries;
                 cronnerOptions.RetryDelay = options.RetryDelay;
             });
@@ -72,7 +75,9 @@ public static class CronnerSetup
             }
             else
             {
-                // A hook type resolved from DI once per execution scope.
+                // A hook type resolved from DI once per execution scope. Its terminal events follow the
+                // default HookScope (CRONNER_HOOK_SCOPE); pass a scope to pin just this hook, e.g.
+                // cronner.AddHook<LoggingHook>(CronnerHookScope.Isolated) to give it its own scope regardless.
                 cronner.AddHook<LoggingHook>();
             }
         });
@@ -123,11 +128,19 @@ public static class CronnerSetup
             .OnSuccess(context =>
             {
                 activity.Record(context.Job.Id, $"[delegate hook] succeeded in {context.Duration.TotalMilliseconds:0} ms");
+
+                // Run-state bag: read whatever the job stashed for its hooks (progress:import sets this).
+                if (context.Get<ProgressJobs.ImportSummary>() is { } summary)
+                    activity.Record(context.Job.Id, $"[run-state] job summary from the bag: {summary.Scopes} scopes ({summary.Note})");
+
                 return Task.CompletedTask;
             })
             .OnFail(context =>
             {
-                logger.LogWarning("[delegate hook] {TaskId} failed: {Error}", context.Job.Id, context.Exception?.Message);
+                // WillRetry says whether another attempt is coming — only alert on the final failure.
+                logger.LogWarning(
+                    "[delegate hook] {TaskId} failed: {Error} (willRetry={WillRetry})",
+                    context.Job.Id, context.Exception?.Message, context.WillRetry);
                 return Task.CompletedTask;
             })
             .OnCancel(context =>
@@ -185,10 +198,11 @@ public static class CronnerSetup
                     // c) an async method-call expression
                     .OnSuccess<AuditHook>(h => h.RecordAsync(
                         h.HasParam<JobActivityLog>(), h.HasParam<ScopeMarker>(), "progress:reindex finished"))
-                    // d) a plain delegate, here on a progress event
+                    // d) a plain delegate, here on a progress event — reading the per-report custom payload
                     .OnTotalProgressChange(context =>
                     {
-                        activity.Record(context.Job.Id, $"[per-schedule hook] total progress {context.TotalProgress:P0}");
+                        var step = context.ProgressPayload is string s ? $" — {s}" : "";
+                        activity.Record(context.Job.Id, $"[per-schedule hook] total progress {context.TotalProgress:P0}{step}");
                         return Task.CompletedTask;
                     }))
 

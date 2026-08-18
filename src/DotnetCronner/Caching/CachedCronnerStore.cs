@@ -85,4 +85,21 @@ public sealed class CachedCronnerStore : ICronnerStore
         if (job is not null)
             await _cache.SetAsync(job, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <inheritdoc />
+    public Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default) =>
+        // Execution history is a backing-store concern; the cache holds only current job snapshots.
+        _inner.RecordExecutionStartedAsync(execution, cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default) =>
+        _inner.RecordExecutionFinishedAsync(execution, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(string jobId, int limit, CancellationToken cancellationToken = default) =>
+        _inner.GetExecutionsAsync(jobId, limit, cancellationToken);
+
+    /// <inheritdoc />
+    public Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default) =>
+        _inner.PruneExecutionsAsync(jobId, keepNewest, cancellationToken);
 }

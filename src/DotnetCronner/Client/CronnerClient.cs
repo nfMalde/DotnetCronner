@@ -105,6 +105,11 @@ public sealed class CronnerClient : ICronnerClient
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string taskId, int limit = 50, CancellationToken cancellationToken = default) =>
+        _store.GetExecutionsAsync(taskId, limit, cancellationToken);
+
+    /// <inheritdoc />
     public async Task CancelTaskAsync(string id, CancellationToken cancellationToken = default)
     {
         var job = await _store.GetByIdAsync(id, cancellationToken).ConfigureAwait(false)

@@ -30,15 +30,18 @@ public sealed class CronnerHookDispatcher
         Exception? exception,
         CancellationToken cancellationToken,
         decimal totalProgress = 0m,
-        CronnerProgressInfo? progressScope = null)
+        CronnerProgressInfo? progressScope = null,
+        CronnerRunState? runState = null,
+        bool willRetry = false,
+        object? progressPayload = null)
     {
         // Global hooks, then per-schedule hooks — each in its own scope.
         foreach (var hook in _globalHooks.Hooks)
-            await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope).ConfigureAwait(false);
+            await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload).ConfigureAwait(false);
 
         if (descriptor is not null)
             foreach (var hook in descriptor.Hooks)
-                await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope).ConfigureAwait(false);
+                await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload).ConfigureAwait(false);
 
         // Hooks registered in DI as ICronnerTaskHook, resolved together in one dedicated scope.
         await using var scope = rootProvider.CreateAsyncScope();
@@ -46,7 +49,7 @@ public sealed class CronnerHookDispatcher
         CronnerTaskContext? context = null;
         foreach (var hook in diHooks)
         {
-            context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope);
+            context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload);
             await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
         }
     }
@@ -54,41 +57,78 @@ public sealed class CronnerHookDispatcher
     private async Task InvokeInOwnScopeAsync(
         CronnerHookEvent hookEvent, ICronnerTaskHook hook, IServiceProvider rootProvider,
         CronnerJob job, TimeSpan duration, Exception? exception, CancellationToken cancellationToken,
-        decimal totalProgress, CronnerProgressInfo? progressScope)
+        decimal totalProgress, CronnerProgressInfo? progressScope, CronnerRunState? runState, bool willRetry,
+        object? progressPayload)
     {
         await using var scope = rootProvider.CreateAsyncScope();
-        var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope);
+        var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload);
         await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Dispatches all hooks for <paramref name="hookEvent"/> within an EXISTING scope (all hooks share
-    /// <paramref name="scopeProvider"/>, no per-hook scope). Used for the terminal lifecycle hooks so they
-    /// run in the job's execution scope — a hook's <c>ctx.HasParam&lt;T&gt;()</c> then resolves the same
-    /// scoped instances the job used.
+    /// Dispatches a terminal lifecycle event (Start/Success/Fail/Cancel) routing <em>each hook</em> by its
+    /// effective scope: a hook's own <see cref="ICronnerScopedHook.PreferredScope"/> if it set one (via
+    /// <c>AddHook</c>/<c>WithHook</c>), otherwise <paramref name="defaultScope"/>. Shared hooks run in the
+    /// job's scope (<paramref name="jobScope"/>) so <c>ctx.HasParam&lt;T&gt;()</c> resolves the job's scoped
+    /// instances; isolated hooks each run in their own fresh scope off <paramref name="rootProvider"/>.
+    /// DI-registered hooks carry no per-hook preference, so they follow <paramref name="defaultScope"/>.
     /// </summary>
-    internal async Task DispatchInScopeAsync(
-        CronnerHookEvent hookEvent, IServiceProvider scopeProvider, CronnerJobDescriptor? descriptor,
-        CronnerJob job, TimeSpan duration, Exception? exception, CancellationToken cancellationToken)
+    internal async Task DispatchTerminalAsync(
+        CronnerHookEvent hookEvent, IServiceProvider jobScope, IServiceProvider rootProvider,
+        CronnerJobDescriptor? descriptor, CronnerJob job, TimeSpan duration, Exception? exception,
+        CancellationToken cancellationToken, CronnerHookScope defaultScope, CronnerRunState? runState, bool willRetry)
     {
-        var context = NewContext(scopeProvider, job, duration, exception, cancellationToken, 0m, null);
+        CronnerTaskContext? sharedContext = null;
+        CronnerTaskContext Shared() => sharedContext ??=
+            NewContext(jobScope, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+
+        async Task RunAsync(ICronnerTaskHook hook)
+        {
+            var effective = (hook as ICronnerScopedHook)?.PreferredScope ?? defaultScope;
+            if (effective == CronnerHookScope.Isolated)
+            {
+                await using var scope = rootProvider.CreateAsyncScope();
+                var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+                await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+            }
+            else
+            {
+                await SafeInvokeAsync(hookEvent, hook, Shared(), job.Id).ConfigureAwait(false);
+            }
+        }
 
         foreach (var hook in _globalHooks.Hooks)
-            await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+            await RunAsync(hook).ConfigureAwait(false);
 
         if (descriptor is not null)
             foreach (var hook in descriptor.Hooks)
-                await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+                await RunAsync(hook).ConfigureAwait(false);
 
-        foreach (var hook in scopeProvider.GetServices<ICronnerTaskHook>())
-            await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+        // DI-registered ICronnerTaskHook instances have no per-hook preference — they follow the default.
+        if (defaultScope == CronnerHookScope.Isolated)
+        {
+            await using var scope = rootProvider.CreateAsyncScope();
+            CronnerTaskContext? context = null;
+            foreach (var hook in scope.ServiceProvider.GetServices<ICronnerTaskHook>())
+            {
+                context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+                await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            foreach (var hook in jobScope.GetServices<ICronnerTaskHook>())
+                await SafeInvokeAsync(hookEvent, hook, Shared(), job.Id).ConfigureAwait(false);
+        }
     }
 
     private async Task SafeInvokeAsync(CronnerHookEvent hookEvent, ICronnerTaskHook hook, CronnerTaskContext context, string id)
     {
+        // A scope-carrying wrapper is never invoked itself — dispatch to the hook it wraps.
+        var target = hook is ScopedHookWrapper wrapper ? wrapper.Inner : hook;
         try
         {
-            await CronnerHookInvoke.Dispatch(hook, hookEvent, context).ConfigureAwait(false);
+            await CronnerHookInvoke.Dispatch(target, hookEvent, context).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -98,7 +138,8 @@ public sealed class CronnerHookDispatcher
 
     private static CronnerTaskContext NewContext(
         IServiceProvider services, CronnerJob job, TimeSpan duration, Exception? exception,
-        CancellationToken cancellationToken, decimal totalProgress, CronnerProgressInfo? progressScope) =>
+        CancellationToken cancellationToken, decimal totalProgress, CronnerProgressInfo? progressScope,
+        CronnerRunState? runState, bool willRetry, object? progressPayload = null) =>
         new()
         {
             Job = job,
@@ -108,5 +149,8 @@ public sealed class CronnerHookDispatcher
             Exception = exception,
             TotalProgress = totalProgress,
             ProgressScope = progressScope,
+            RunState = runState,
+            WillRetry = willRetry,
+            ProgressPayload = progressPayload,
         };
 }
