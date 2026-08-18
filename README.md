@@ -109,6 +109,9 @@ Configure via `AddDotnetCronner(c => c.Configure(o => ...))` or `app.UseDotnetCr
 | `LockTtl` | 1 min | Lock validity window. A running task renews its claim every `LockTtl`/2, so long jobs keep their lock; a task is treated as stalled and reclaimable only after a worker stops renewing for longer than this (e.g. a crash) |
 | `KeepAliveInterval` | `null` (= `LockTtl`/2) | Pins how often the lock renews and `OnKeepAlive` fires, independently of `LockTtl` (also via `WithKeepAliveInterval(...)`). Keep it below `LockTtl` |
 | `OneOffRetentionCount` | 0 (keep all) | Keep only the newest N finished one-off (enqueued) instances per definition (also via `WithOneOffRetention(N)`) |
+| `ExecutionHistoryRetentionCount` | 0 (off) | Record per-run execution history, keeping the newest N runs per task (also via `WithExecutionHistory(N)`). Read with `ICronnerClient.GetExecutionsAsync(...)` |
+| `HookScope` | `Shared` | Default scope for terminal hooks: `Shared` (the job's scope) or `Isolated` (own fresh scope). Override per hook via `AddHook`/`WithHook` |
+| `OnInvalidSchedule` | `MarkFailed` | A cron that parses but never fires: `MarkFailed` (mark that task Failed, keep the rest) or `Throw` (fail host startup) |
 | `DefaultMaxRetries` / `RetryDelay` | 0 / 0 | Automatic retry on failure |
 | `ScanEntryAssembly` | true | Scan the entry assembly for `[CronnerTask]` methods |
 
@@ -303,7 +306,7 @@ public sealed class LoggingHook(ILogger<LoggingHook> logger) : ICronnerTaskHook
 builder.Services.AddScoped<ICronnerTaskHook, LoggingHook>();   // or cronner.AddHook<LoggingHook>()
 ```
 
-`ICronnerTaskHook` has default method implementations, so override only the events you need. The
+`ICronnerTaskHook` has default method implementations, so override only the events you need. By default the
 **terminal lifecycle hooks** (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) run in the **job's execution
 scope**, so a hook's `ctx.HasParam<T>()` resolves the *same* scoped instances the job used — e.g. the job
 writes a summary into a scoped service and the terminal hook reads it back. **Lock and progress hooks**
@@ -311,8 +314,35 @@ fire outside the job's execution, so each runs in its **own** fresh scope. Resol
 `ctx.Services` or `ctx.HasParam<T>()`; `CronnerTaskContext` exposes the `Job`, `Services`, `HasParam<T>()`,
 `CancellationToken`, `Duration`, and the `Exception` on failure.
 
+**Hook scope — per hook.** Scope applies **only to the terminal hooks** (`OnStart`/`OnSuccess`/`OnFail`/
+`OnCancel`), and you set it **per hook** on registration:
+
+```csharp
+cronner.AddHook<AuditHook>(CronnerHookScope.Isolated);   // this hook: own scope, no contention with the job's UoW
+cronner.AddHook<LoggingHook>();                           // this hook: inherits the default (Shared)
+// per schedule: .Sched<Job>(..., o => o.WithHook<TxHook>(CronnerHookScope.Isolated))
+```
+
+A hook with no explicit scope inherits `HookScope` (default `Shared` = the job's scope; set it via
+`Configure` to flip the default to `Isolated`). `Shared` lets a hook's `ctx.HasParam<T>()` resolve the
+*same* scoped instances the job used; `Isolated` gives the hook its own fresh scope — use it when the job's
+scope holds a single-session unit of work (one `DbContext`/`ISession`) a hook writing on the same scope
+would contend with. In an isolated hook, pass job data across with the run-state bag rather than shared
+scoped services. **`OnKeepAlive`, the other lock hooks, and progress hooks always run in their own fresh
+scope regardless** — `OnKeepAlive` fires detached and concurrently with the running job, so sharing the
+job's scope (and its session) would be a bug; it reads the run-state bag for job data without ever touching
+the job's scope.
+
+**Run-state bag.** For scope-independent data flow, the job stashes values the hooks read back:
+`ctx.Set(value)` from the job (`ICronnerJobContext`), `ctx.Get<T>()` / `ctx.TryGet<T>(out …)` from a hook
+(`CronnerTaskContext`). The bag is per **run** (concurrent runs never share) and is visible to `OnKeepAlive`
+and the terminal hooks — including `OnFail` — regardless of hook scope. (`OnStart` fires before the body, so
+it can't see values the job sets.) This is the clean way to build a teardown/notification summary as pure
+data: the job materializes it, the hook just reads it — no need to keep the job's session alive.
+
 > Retries and `OnFail`: with `DefaultMaxRetries > 0`, `OnFail` fires on **each** failed attempt (not once
-> after retries are exhausted) — so guard against N notifications per incident if that matters.
+> after retries are exhausted). Check `ctx.WillRetry` — it's `true` while attempts remain and `false` on the
+> final failure — to alert only once per incident.
 
 For database work inside a hook, resolve your own scoped unit-of-work that way — **don't call
 `ICronnerStore` from a hook.** It has no per-hook session, and creating the scope alone opens no
@@ -351,8 +381,19 @@ cronner.OnTotalProgressChange(ctx => hub.PushAsync(ctx.Job.Id, ctx.TotalProgress
        .OnScopeProgress(ctx => hub.PushAsync(ctx.Job.Id, ctx.ProgressScope!.Category, ctx.ProgressScope!.Value));
 ```
 
+Each progress report can also carry a **custom payload** — any object — delivered to the hook as
+`ctx.ProgressPayload` for that report. It works for both total and scope progress and is the place for
+per-report detail a scope's `Category` can't hold (a current-step name, an item id, a partial result):
+
+```csharp
+ctx.Progress(0.4m, "importing orders");                 // total: ctx.ProgressPayload == "importing orders"
+files.Progress(0.5m, new { file = "part-3.csv" });      // scope: ctx.ProgressPayload is the anonymous object
+// hook: cronner.OnTotalProgressChange(ctx => hub.PushAsync(ctx.Job.Id, ctx.TotalProgress, ctx.ProgressPayload))
+```
+
 Both `Progress` (fire-and-forget) and `ProgressAsync` (awaits the hooks) are available on the context and
-on a scope; fire-and-forget reports are drained before the terminal `OnSuccess`/`OnFail` hook runs.
+on a scope; fire-and-forget reports are drained before the terminal `OnSuccess`/`OnFail` hook runs. (Progress
+hooks can also read the per-run state bag via `ctx.Get<T>()`, exactly like the terminal hooks.)
 
 ### One-off jobs — enqueue with a payload
 
@@ -396,12 +437,38 @@ app.MapGet("/registered", (ICronnerClient c) => c.GetRegisteredTasks());
 app.MapGet("/tasks/{id}", (ICronnerClient c, string id) => c.GetTaskByIdAsync(id));
 app.MapPost("/tasks/{id}/run", (ICronnerClient c, string id) => c.TriggerNowAsync(id));    // run now, ignoring cron
 app.MapPost("/tasks/{id}/cancel", (ICronnerClient c, string id) => c.CancelTaskAsync(id)); // cancel running or unschedule
+app.MapGet("/tasks/{id}/history", (ICronnerClient c, string id) => c.GetExecutionsAsync(id, 20)); // recent runs
 ```
 
 `TriggerNowAsync` is the unambiguous "run now" (`ScheduleTaskAsync` is an alias). `CancelTaskAsync` cancels
 a **running** execution via its token, or unschedules a pending one. `GetRegisteredTasks()` returns the
 in-memory definitions (with `Description`), so an admin screen can list manual/enqueue-only jobs that have
 never produced a store row.
+
+### Execution history
+
+Enable it with `WithExecutionHistory(keepPerTask)` (off by default). Each run records a `Running` entry when
+it starts and finalizes it to `Succeeded` / `Failed` / `Cancelled` (with the error and duration) when it
+ends; older entries are pruned to the per-task cap. `GetExecutionsAsync(taskId, limit)` returns them newest
+first. A `Running` entry that never finalized marks a crashed or stalled run. Each entry also records the
+owning scheduler instance (`Owner` — "which node ran this") and an optional consumer blob: call
+`ctx.SetExecutionData(mySummary)` from the job or a hook and it is stored as JSON on the entry's `Data`, so
+one history row can carry your own summary/log reference instead of a parallel table. The EF Core store
+persists history in a new `CronnerJobExecutions` table (**generate a migration after upgrading**); the Redis
+and in-memory stores need no schema step.
+
+### Execution semantics
+
+- **`OnFail` fires per attempt, not per run.** With `DefaultMaxRetries > 0` each failed attempt fires it;
+  use `ctx.WillRetry` to act only on the final failure.
+- **One run per task across processes** is enforced by the store's execution lock: while one instance holds
+  a task's claim, no other instance can claim it. `DropAndForget` / `Queue` govern missed-occurrence
+  catch-up within the owning worker; `Concurrent` is the exception — it releases the claim up front to allow
+  parallel runs.
+- **`CancelTaskAsync`** is state-dependent, not both at once: a **running** task is signalled through its
+  token (it stops if it honours the token); a **non-running** task is unscheduled.
+- **`OnLockLost`** fires precisely when a keepalive renewal (`RenewLockAsync`) returns `false` — i.e. the
+  claim was reclaimed elsewhere — and nothing else.
 
 ## Validation
 

@@ -103,7 +103,8 @@ public sealed class LoggingHook(
     public Task OnTotalProgressChangeAsync(CronnerTaskContext context)
     {
         // Resolved from this hook invocation's own scope rather than the constructor, to exercise HasParam.
-        context.HasParam<JobProgressTracker>().Total(context.Job.Id, context.TotalProgress);
+        // context.ProgressPayload is the per-report custom payload the job passed to Progress(value, payload).
+        context.HasParam<JobProgressTracker>().Total(context.Job.Id, context.TotalProgress, context.ProgressPayload as string);
         return Task.CompletedTask;
     }
 
@@ -118,7 +119,7 @@ public sealed class LoggingHook(
     /// <inheritdoc />
     public Task OnScopeProgressAsync(CronnerTaskContext context)
     {
-        progress.ScopeProgress(context.Job.Id, context.ProgressScope!);
+        progress.ScopeProgress(context.Job.Id, context.ProgressScope!, context.ProgressPayload as string);
         return Task.CompletedTask;
     }
 

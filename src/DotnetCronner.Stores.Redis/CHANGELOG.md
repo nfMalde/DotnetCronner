@@ -6,6 +6,14 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-08-18
+
+### Added
+- Execution-history persistence: runs are stored in a per-job Redis hash (`<prefix>exec:<jobId>`, keyed by
+  each run's correlation id), implementing `RecordExecutionStartedAsync` / `RecordExecutionFinishedAsync`
+  (insert then finalize the same field), `GetExecutionsAsync` (newest first) and `PruneExecutionsAsync`.
+  Removing a job deletes its history hash. No schema/migration step — enable it with `WithExecutionHistory`.
+
 ## [0.0.4] - 2026-08-17
 
 ### Fixed

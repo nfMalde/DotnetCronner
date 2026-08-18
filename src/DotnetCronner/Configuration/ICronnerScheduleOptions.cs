@@ -23,11 +23,17 @@ public interface ICronnerScheduleOptions
     /// <summary>Sets a human-readable description, surfaced on <c>CronnerJobDescriptor</c> and admin listings.</summary>
     ICronnerScheduleOptions WithDescription(string description);
 
-    /// <summary>Attaches a hook instance to this schedule only.</summary>
-    ICronnerScheduleOptions WithHook(ICronnerTaskHook hook);
+    /// <summary>
+    /// Attaches a hook instance to this schedule only. Pass <paramref name="scope"/> to override
+    /// <see cref="CronnerOptions.HookScope"/> for this hook's terminal events; <c>null</c> inherits the default.
+    /// </summary>
+    ICronnerScheduleOptions WithHook(ICronnerTaskHook hook, CronnerHookScope? scope = null);
 
-    /// <summary>Attaches a hook type to this schedule only; resolved from the hook's own scope per invocation.</summary>
-    ICronnerScheduleOptions WithHook<THook>() where THook : class, ICronnerTaskHook;
+    /// <summary>
+    /// Attaches a hook type to this schedule only; resolved from the hook's own scope per invocation. Pass
+    /// <paramref name="scope"/> to override <see cref="CronnerOptions.HookScope"/> for this hook.
+    /// </summary>
+    ICronnerScheduleOptions WithHook<THook>(CronnerHookScope? scope = null) where THook : class, ICronnerTaskHook;
 
     /// <summary>Runs before each execution of this task.</summary>
     ICronnerScheduleOptions OnStart(Func<CronnerTaskContext, Task> handler);
@@ -185,15 +191,15 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
         return this;
     }
 
-    public ICronnerScheduleOptions WithHook(ICronnerTaskHook hook)
+    public ICronnerScheduleOptions WithHook(ICronnerTaskHook hook, CronnerHookScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        _hooks.Add(hook);
+        _hooks.Add(CronnerHookFactory.WithScope(hook, scope));
         return this;
     }
 
-    public ICronnerScheduleOptions WithHook<THook>() where THook : class, ICronnerTaskHook =>
-        Add(CronnerHookFactory.FromType(typeof(THook)));
+    public ICronnerScheduleOptions WithHook<THook>(CronnerHookScope? scope = null) where THook : class, ICronnerTaskHook =>
+        Add(CronnerHookFactory.FromType(typeof(THook), scope));
 
     public ICronnerScheduleOptions OnStart(Func<CronnerTaskContext, Task> handler) => Delegate(CronnerHookEvent.Start, handler);
     public ICronnerScheduleOptions OnStart<THook>(Expression<Action<THook>> call) => Expr(CronnerHookEvent.Start, typeof(THook), call);

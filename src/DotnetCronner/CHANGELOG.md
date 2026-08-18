@@ -6,6 +6,35 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-08-18
+
+### Added
+- Execution history (opt-in via `WithExecutionHistory(keepPerTask)`; `0`, the default, is off): each run
+  records a `Running` history entry when it starts and finalizes it to `Succeeded` / `Failed` / `Cancelled`
+  when it ends, correlated so it works even for concurrent runs of the same task. Older entries are pruned to
+  the per-task cap after each run. Read them back with `ICronnerClient.GetExecutionsAsync`. The built-in
+  in-memory and cached stores persist history; a `Running` entry left behind marks a crashed/stalled run.
+  Each entry also carries the owning scheduler instance and an optional consumer JSON blob set via
+  `ctx.SetExecutionData(...)`.
+- Per-run **state bag**: `ctx.Set<T>()` / `ctx.Get<T>()` / `ctx.TryGet<T>()` on `ICronnerJobContext` (job)
+  and `CronnerTaskContext` (hooks). A value the job stashes is visible to that run's `OnKeepAlive` and
+  terminal hooks — including `OnFail` — regardless of hook scope. Keyed per run, so concurrent runs never
+  share. (`OnStart` fires before the body, so it cannot see job-set values.)
+- **Per-hook scope** for terminal hooks: pass a `CronnerHookScope` to `AddHook` / `WithHook`
+  (`AddHook<AuditHook>(CronnerHookScope.Isolated)`) so an individual hook runs `Isolated` (its own fresh
+  scope, never contending with a single-session unit of work the job holds) while others stay `Shared`.
+  `CronnerOptions.HookScope` (set via `Configure`) sets the default for hooks that don't specify one; it
+  defaults to `Shared` (the 0.0.4 behavior — terminal hooks run in the job's scope). Lock and progress hooks
+  always run isolated regardless.
+- `CronnerOptions.OnInvalidSchedule`: `MarkFailed` (default — mark a never-firing task Failed and keep
+  scheduling the rest) or `Throw` (fail host startup so the app refuses to boot until the cron is fixed).
+- `CronnerTaskContext.WillRetry`: on `OnFail`, whether the scheduler will retry (there are attempts left) —
+  so a failure hook can hold off alerting until the final attempt.
+- Per-report **progress payload**: `ctx.Progress(value, payload)` / `ProgressAsync(...)` and the scope
+  equivalents (plus `OpenProgressScope(category, payload)`) attach any object to a progress report, delivered
+  to the total/scope progress hook as `CronnerTaskContext.ProgressPayload` — for per-report detail a scope's
+  category can't carry (current step, item id, partial result). Progress hooks also read the run-state bag.
+
 ## [0.0.4] - 2026-08-17
 
 ### Fixed

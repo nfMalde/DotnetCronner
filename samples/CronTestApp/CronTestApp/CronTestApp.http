@@ -20,6 +20,11 @@ Accept: application/json
 GET {{host}}/tasks/attr:heartbeat
 Accept: application/json
 
+### Execution history for a task, newest first (needs CRONNER_EXEC_HISTORY>0). Each run records a
+### Running row on start, finalized to Succeeded/Failed/Cancelled when it ends.
+GET {{host}}/tasks/attr:heartbeat/history?take=20
+Accept: application/json
+
 ### Trigger the manual attribute task (it has no cron string, so this is the only way it runs)
 POST {{host}}/tasks/attr:manual/run
 

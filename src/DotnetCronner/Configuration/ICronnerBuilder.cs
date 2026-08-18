@@ -72,11 +72,28 @@ public interface ICronnerBuilder
     /// </summary>
     ICronnerBuilder WithOneOffRetention(int keepNewest);
 
-    /// <summary>Adds a global lifecycle/lock hook instance.</summary>
-    ICronnerBuilder AddHook(ICronnerTaskHook hook);
+    /// <summary>
+    /// Records execution history for each run — start/finish times, <see cref="JobExecutionStatus"/>, attempt
+    /// number and error — keeping only the newest <paramref name="keepPerTask"/> records per task and pruning
+    /// older ones after each run. <c>0</c> (the default) disables history. Read it back with
+    /// <see cref="ICronnerClient.GetExecutionsAsync"/>. Needs a store that persists history (all built-in
+    /// stores do).
+    /// </summary>
+    ICronnerBuilder WithExecutionHistory(int keepPerTask);
 
-    /// <summary>Registers a global hook type, resolved from the hook's own scope per invocation.</summary>
-    ICronnerBuilder AddHook<THook>() where THook : class, ICronnerTaskHook;
+    /// <summary>
+    /// Adds a global lifecycle/lock hook instance. Pass <paramref name="scope"/> to override
+    /// <see cref="CronnerOptions.HookScope"/> for this hook's terminal events only (e.g.
+    /// <see cref="CronnerHookScope.Isolated"/> so it never contends with the job's unit of work);
+    /// <c>null</c> inherits the default.
+    /// </summary>
+    ICronnerBuilder AddHook(ICronnerTaskHook hook, CronnerHookScope? scope = null);
+
+    /// <summary>
+    /// Registers a global hook type, resolved from the hook's own scope per invocation. Pass
+    /// <paramref name="scope"/> to override <see cref="CronnerOptions.HookScope"/> for this hook.
+    /// </summary>
+    ICronnerBuilder AddHook<THook>(CronnerHookScope? scope = null) where THook : class, ICronnerTaskHook;
 
     /// <summary>Adds a global callback that runs immediately before each task executes.</summary>
     ICronnerBuilder OnStart(Func<CronnerTaskContext, Task> handler);

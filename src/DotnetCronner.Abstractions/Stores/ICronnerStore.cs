@@ -101,4 +101,39 @@ public interface ICronnerStore
     /// </summary>
     Task UpdateProgressAsync(string id, decimal progress, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
+
+    /// <summary>
+    /// Inserts a <see cref="JobExecutionStatus.Running"/> execution-history record when a run starts. The
+    /// scheduler calls this (before invoking the task) only when execution history is enabled via
+    /// <c>WithExecutionHistory</c>. The record is finalized by <see cref="RecordExecutionFinishedAsync"/>,
+    /// matched on <see cref="CronnerJobExecution.Id"/>. The default implementation does nothing — override it
+    /// (an insert) to persist history in a custom store.
+    /// </summary>
+    Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
+    /// Finalizes the execution-history record with id <see cref="CronnerJobExecution.Id"/> — the row inserted
+    /// by <see cref="RecordExecutionStartedAsync"/> — setting its terminal status, finish time and error.
+    /// The default implementation does nothing — override it (an update matched on the id) to persist history.
+    /// </summary>
+    Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
+    /// Returns up to <paramref name="limit"/> execution-history records for the job with the given
+    /// <paramref name="jobId"/>, ordered newest first (by <see cref="CronnerJobExecution.StartedAt"/>). The
+    /// default implementation returns an empty list — override it to expose history from a custom store.
+    /// </summary>
+    Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(string jobId, int limit, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CronnerJobExecution>>(Array.Empty<CronnerJobExecution>());
+
+    /// <summary>
+    /// Deletes execution-history records for the given <paramref name="jobId"/>, keeping the newest
+    /// <paramref name="keepNewest"/> (by <see cref="CronnerJobExecution.StartedAt"/>) and removing the rest.
+    /// The scheduler calls this after each run finishes when history retention is enabled. The default
+    /// implementation does nothing — override it (a targeted delete) to enable retention in a custom store.
+    /// </summary>
+    Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

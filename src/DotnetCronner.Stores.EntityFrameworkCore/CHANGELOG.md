@@ -6,6 +6,20 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-08-18
+
+### Added
+- Execution-history persistence: a new `CronnerJobExecutions` table (entity `CronnerJobExecutionEntity`, a
+  numeric identity key + `TaskId` foreign key to the jobs table with `ON DELETE CASCADE` + an indexed
+  correlation id, plus `Owner` and `Data` columns) with `RecordExecutionStartedAsync` (insert),
+  `RecordExecutionFinishedAsync` (targeted `ExecuteUpdate` matched on the correlation id), `GetExecutionsAsync`
+  and `PruneExecutionsAsync`.
+
+### ⚠️ Migration required
+- This adds a new table and mapping. **After upgrading you must generate and apply a new EF Core migration**
+  (`dotnet ef migrations add AddCronnerJobExecutions` then `database update`, or your normal migration flow).
+  The scheduler only writes history when `WithExecutionHistory` is enabled, but the table must exist first.
+
 ## [0.0.4] - 2026-08-17
 
 ### Fixed

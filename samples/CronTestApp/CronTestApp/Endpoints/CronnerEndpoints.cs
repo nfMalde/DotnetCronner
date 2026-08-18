@@ -24,6 +24,7 @@ public static class CronnerEndpoints
                 "GET  /tasks?state=&offset=&limit=  — persisted task rows",
                 "GET  /registered              — every registered definition (incl. never-run / manual)",
                 "GET  /tasks/{id}              — one task",
+                "GET  /tasks/{id}/history?take= — execution history for a task (needs CRONNER_EXEC_HISTORY>0)",
                 "POST /tasks/{id}/run          — TriggerNow: run a task immediately (works for manual tasks)",
                 "POST /enqueue/notify          — enqueue a one-off with a typed payload (body: {to,message,attempt})",
                 "POST /tasks/{id}/cancel       — cancel a running task and unschedule it",
@@ -48,6 +49,11 @@ public static class CronnerEndpoints
             await client.GetTaskByIdAsync(id) is { } task
                 ? Results.Ok(task)
                 : Results.NotFound(new { error = $"No task with id '{id}'." }));
+
+        // Execution history for a task, newest first. Empty unless CRONNER_EXEC_HISTORY > 0 — each run then
+        // records a Running row on start that is finalized (Succeeded/Failed/Cancelled) when it ends.
+        app.MapGet("/tasks/{id}/history", async (ICronnerClient client, string id, int take = 20) =>
+            Results.Ok(await client.GetExecutionsAsync(id, take)));
 
         app.MapPost("/tasks/{id}/run", async (ICronnerClient client, string id) =>
         {

@@ -11,19 +11,21 @@ public sealed class JobProgressTracker
 {
     private readonly ConcurrentDictionary<string, JobProgress> _byJob = new();
 
-    /// <summary>Records total progress (from <c>OnTotalProgressChange</c>).</summary>
-    public void Total(string jobId, decimal value)
+    /// <summary>Records total progress (from <c>OnTotalProgressChange</c>), with the report's optional payload note.</summary>
+    public void Total(string jobId, decimal value, string? note = null)
     {
         var progress = _byJob.GetOrAdd(jobId, static _ => new JobProgress());
         progress.Total = value;
+        if (note is not null)
+            progress.Note = note;
         progress.LastUpdateUtc = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Records a scope opening (from <c>OnProgressScopeOpened</c>).</summary>
     public void ScopeOpened(string jobId, CronnerProgressInfo scope) => UpdateScope(jobId, scope, open: true);
 
-    /// <summary>Records progress inside a scope (from <c>OnScopeProgress</c>).</summary>
-    public void ScopeProgress(string jobId, CronnerProgressInfo scope) => UpdateScope(jobId, scope, open: true);
+    /// <summary>Records progress inside a scope (from <c>OnScopeProgress</c>), with the report's optional payload note.</summary>
+    public void ScopeProgress(string jobId, CronnerProgressInfo scope, string? note = null) => UpdateScope(jobId, scope, open: true, note);
 
     /// <summary>Records a scope closing (from <c>OnProgressScopeClosed</c>).</summary>
     public void ScopeClosed(string jobId, CronnerProgressInfo scope) => UpdateScope(jobId, scope, open: false);
@@ -34,26 +36,31 @@ public sealed class JobProgressTracker
         .ToDictionary(pair => pair.Key, pair => (object)new
         {
             total = pair.Value.Total,
+            note = pair.Value.Note,   // the latest total-progress payload (ctx.ProgressPayload)
             lastUpdateUtc = pair.Value.LastUpdateUtc,
             scopes = pair.Value.Scopes.Values
                 .OrderBy(scope => scope.Category, StringComparer.Ordinal)
-                .Select(scope => new { scope.Id, scope.Category, scope.Value, scope.Open, scope.Reports })
+                .Select(scope => new { scope.Id, scope.Category, scope.Value, scope.Open, scope.Reports, scope.Note })
                 .ToArray(),
         });
 
-    private void UpdateScope(string jobId, CronnerProgressInfo scope, bool open)
+    private void UpdateScope(string jobId, CronnerProgressInfo scope, bool open, string? note = null)
     {
         var progress = _byJob.GetOrAdd(jobId, static _ => new JobProgress());
         var state = progress.Scopes.GetOrAdd(scope.Id, id => new ScopeState { Id = id, Category = scope.Category });
         state.Value = scope.Value;
         state.Open = open;
         state.Reports++;
+        if (note is not null)
+            state.Note = note;
         progress.LastUpdateUtc = DateTimeOffset.UtcNow;
     }
 
     private sealed class JobProgress
     {
         public decimal Total { get; set; }
+
+        public string? Note { get; set; }
 
         public DateTimeOffset LastUpdateUtc { get; set; }
 
@@ -71,5 +78,7 @@ public sealed class JobProgressTracker
         public bool Open { get; set; }
 
         public int Reports { get; set; }
+
+        public string? Note { get; set; }
     }
 }

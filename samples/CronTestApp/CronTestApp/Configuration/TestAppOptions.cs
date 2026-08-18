@@ -1,3 +1,5 @@
+using DotnetCronner;
+
 namespace CronTestApp.Configuration;
 
 /// <summary>Which <c>ICronnerStore</c> implementation backs the scheduler.</summary>
@@ -106,6 +108,15 @@ public sealed class TestAppOptions
     /// <summary>Keep only the newest N finished one-off (enqueued) instances per definition; 0 keeps them all.</summary>
     public int OneOffRetention { get; init; }
 
+    /// <summary>Record execution history, keeping the newest N runs per task; 0 (the default) disables it.</summary>
+    public int ExecutionHistory { get; init; }
+
+    /// <summary>Which DI scope the terminal lifecycle hooks run in: shared (job's scope) or isolated.</summary>
+    public CronnerHookScope HookScope { get; init; }
+
+    /// <summary>What to do about a cron that parses but never fires: mark the task Failed, or throw at startup.</summary>
+    public CronnerInvalidScheduleBehavior OnInvalidSchedule { get; init; }
+
     /// <summary>Pins the keepalive / <c>OnKeepAlive</c> cadence, or <c>null</c> to use the default <c>LockTtl</c>/2.</summary>
     public TimeSpan? KeepAliveInterval { get; init; }
 
@@ -164,6 +175,17 @@ public sealed class TestAppOptions
             configuration, "CRONNER_POSTGRES", "Host=localhost;Port=5432;Database=cronner;Username=cronner;Password=cronner"),
         CustomStoreFile = ReadString(configuration, "CRONNER_CUSTOM_STORE_FILE", "cronner-store.json"),
         OneOffRetention = ReadInt(configuration, "CRONNER_ONEOFF_RETENTION", 20),
+        ExecutionHistory = ReadInt(configuration, "CRONNER_EXEC_HISTORY", 20),
+        HookScope = ReadEnum(configuration, "CRONNER_HOOK_SCOPE", CronnerHookScope.Shared, new Dictionary<string, CronnerHookScope>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["shared"] = CronnerHookScope.Shared,
+            ["isolated"] = CronnerHookScope.Isolated,
+        }),
+        OnInvalidSchedule = ReadEnum(configuration, "CRONNER_INVALID_SCHEDULE", CronnerInvalidScheduleBehavior.MarkFailed, new Dictionary<string, CronnerInvalidScheduleBehavior>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["mark-failed"] = CronnerInvalidScheduleBehavior.MarkFailed,
+            ["throw"] = CronnerInvalidScheduleBehavior.Throw,
+        }),
         KeepAliveInterval = ReadInt(configuration, "CRONNER_KEEPALIVE_SECONDS", 0) is var kai && kai > 0
             ? TimeSpan.FromSeconds(kai)
             : null,
@@ -185,6 +207,9 @@ public sealed class TestAppOptions
         retryDelay = RetryDelay.ToString(),
         keepAliveInterval = (KeepAliveInterval ?? TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2))).ToString(),
         oneOffRetention = OneOffRetention == 0 ? "keep all" : OneOffRetention.ToString(),
+        executionHistory = ExecutionHistory == 0 ? "off" : $"keep newest {ExecutionHistory} per task",
+        hookScope = HookScope.ToString(),
+        onInvalidSchedule = OnInvalidSchedule.ToString(),
         slowKeepAliveHook = SlowKeepAliveDelay > TimeSpan.Zero ? SlowKeepAliveDelay.ToString() : "off",
         redisConnection = UsesRedis ? RedisConnection : null,
         redisKeyPrefix = UsesRedis ? RedisKeyPrefix : null,

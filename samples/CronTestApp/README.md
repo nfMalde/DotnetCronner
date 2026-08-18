@@ -94,8 +94,11 @@ There is no bundled dashboard, so everything goes through `ICronnerClient` on th
 | --- | --- |
 | `GET /config` | the active `.env`-driven configuration |
 | `GET /tasks?state=&offset=&limit=` | every registered task, with state, priority, next run, last error |
+| `GET /registered` | every registered definition, incl. never-run / manual / enqueue-only ones |
 | `GET /tasks/{id}` | one task |
+| `GET /tasks/{id}/history?take=` | execution history for a task (needs `CRONNER_EXEC_HISTORY>0`), newest first |
 | `POST /tasks/{id}/run` | trigger now — the only way manual tasks ever run |
+| `POST /enqueue/notify` | enqueue a one-off with a typed payload (body: `{to,message,attempt}`) |
 | `POST /tasks/{id}/cancel` | cancel a running task and unschedule it |
 | `POST /tasks/{id}/steal-lock` | write a foreign lock owner into the store to force `OnLockLost` |
 | `GET /activity?take=&jobId=` | **what the jobs actually did**, newest first |

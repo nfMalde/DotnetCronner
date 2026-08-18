@@ -6,6 +6,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-08-18
+
+### Added
+- Execution history: `CronnerJobExecution` (one recorded run — start/finish, `JobExecutionStatus`, attempt,
+  error, plus `Owner` = which scheduler instance ran it and `Data` = optional consumer JSON), the abstract
+  `JobExecutionEntity` persistence base (each store adds its own key and job link), and the `ICronnerStore`
+  methods `RecordExecutionStartedAsync` / `RecordExecutionFinishedAsync` / `GetExecutionsAsync` /
+  `PruneExecutionsAsync` (all default no-op / empty, so existing custom stores are source-compatible).
+- `ICronnerClient.GetExecutionsAsync(taskId, limit)` to read a task's recent runs, newest first.
+
 ## [0.0.4] - 2026-08-17
 
 ### Changed

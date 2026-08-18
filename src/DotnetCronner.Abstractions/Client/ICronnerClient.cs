@@ -58,6 +58,17 @@ public interface ICronnerClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the most recent execution-history records for the task with id <paramref name="taskId"/>,
+    /// newest first (up to <paramref name="limit"/>). Each record captures one run — its start/finish times,
+    /// <see cref="JobExecutionStatus"/>, attempt number and error. Returns an empty list when history
+    /// recording is disabled (see <c>WithExecutionHistory</c>) or the configured store does not persist it.
+    /// </summary>
+    Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string taskId,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Cancels the task with the given <paramref name="id"/>. If it is <b>currently running</b>, its
     /// <see cref="CancellationToken"/> is signalled and the worker persists the terminal <c>Cancelled</c>
     /// state (so long-running executions that honour their token stop). If it is <b>not running</b>, it is

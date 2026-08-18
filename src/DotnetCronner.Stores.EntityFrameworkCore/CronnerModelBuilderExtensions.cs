@@ -27,6 +27,23 @@ public static class CronnerModelBuilderExtensions
             entity.HasIndex(e => new { e.DefinitionId, e.State });
         });
 
+        modelBuilder.Entity<CronnerJobExecutionEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TaskId).HasMaxLength(256);
+            entity.Property(e => e.CorrelationId).HasMaxLength(64);
+            entity.Property(e => e.Owner).HasMaxLength(64);
+            // Newest-first history reads and retention pruning filter by job and order by start time.
+            entity.HasIndex(e => new { e.TaskId, e.StartedAt });
+            // Finalizing a run looks the row up by its correlation id.
+            entity.HasIndex(e => e.CorrelationId);
+            // Tie each run to its job; deleting a job (incl. one-off retention pruning) removes its history.
+            entity.HasOne<CronnerJobEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         return modelBuilder;
     }
 }

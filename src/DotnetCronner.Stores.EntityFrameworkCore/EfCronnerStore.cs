@@ -170,4 +170,70 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
             .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.Progress, progress), cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <inheritdoc />
+    public async Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        context.CronnerJobExecutions.Add(CronnerJobExecutionEntity.From(execution));
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        // Finalize the row inserted at start (matched on the correlation id) with a targeted update.
+        var affected = await context.CronnerJobExecutions
+            .Where(e => e.CorrelationId == execution.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(e => e.FinishedAt, execution.FinishedAt)
+                .SetProperty(e => e.Status, execution.Status)
+                .SetProperty(e => e.Error, execution.Error)
+                .SetProperty(e => e.Data, execution.Data), cancellationToken)
+            .ConfigureAwait(false);
+
+        // If the start record never landed (history was enabled mid-run, or its insert failed), insert the
+        // finished record so the run is not lost entirely.
+        if (affected == 0)
+        {
+            context.CronnerJobExecutions.Add(CronnerJobExecutionEntity.From(execution));
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string jobId, int limit, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var entities = await context.CronnerJobExecutions.AsNoTracking()
+            .Where(e => e.TaskId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id)
+            .Take(Math.Max(0, limit))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        return entities.Select(e => e.ToDomain()).ToArray();
+    }
+
+    /// <inheritdoc />
+    public async Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        var stale = await context.CronnerJobExecutions
+            .Where(e => e.TaskId == jobId)
+            .OrderByDescending(e => e.StartedAt)
+            .ThenByDescending(e => e.Id)
+            .Skip(Math.Max(0, keepNewest))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        if (stale.Count == 0)
+            return;
+
+        context.CronnerJobExecutions.RemoveRange(stale);
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
 }

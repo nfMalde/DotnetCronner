@@ -13,6 +13,7 @@ public sealed class RedisCronnerStore : ICronnerStore
     private readonly string _jobsKey;
     private readonly string _dueKey;
     private readonly string _lockPrefix;
+    private readonly string _execPrefix;
 
     /// <summary>Creates the store over the given connection with the given key prefix.</summary>
     public RedisCronnerStore(IConnectionMultiplexer redis, string keyPrefix = "cronner:")
@@ -21,6 +22,7 @@ public sealed class RedisCronnerStore : ICronnerStore
         _jobsKey = $"{keyPrefix}jobs";
         _dueKey = $"{keyPrefix}due";
         _lockPrefix = $"{keyPrefix}lock:";
+        _execPrefix = $"{keyPrefix}exec:";
     }
 
     private IDatabase Db => _redis.GetDatabase();
@@ -74,6 +76,8 @@ public sealed class RedisCronnerStore : ICronnerStore
         await Db.HashDeleteAsync(_jobsKey, id).ConfigureAwait(false);
         await Db.SortedSetRemoveAsync(_dueKey, id).ConfigureAwait(false);
         await Db.KeyDeleteAsync(LockKey(id)).ConfigureAwait(false);
+        // Cascade: a removed job takes its execution history with it.
+        await Db.KeyDeleteAsync(ExecKey(id)).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -174,5 +178,55 @@ public sealed class RedisCronnerStore : ICronnerStore
         await Db.HashSetAsync(_jobsKey, id, CronnerJobSerializer.Serialize(job)).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        // Each run is a field (keyed by its own correlation id) in a per-job hash — the job link is the key.
+        await Db.HashSetAsync(ExecKey(execution.JobId), execution.Id, CronnerJobExecutionSerializer.Serialize(execution))
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken cancellationToken = default)
+    {
+        // Overwrite the same field (correlation id) with the finalized record; tolerant of a missing start.
+        await Db.HashSetAsync(ExecKey(execution.JobId), execution.Id, CronnerJobExecutionSerializer.Serialize(execution))
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(
+        string jobId, int limit, CancellationToken cancellationToken = default)
+    {
+        var entries = await Db.HashGetAllAsync(ExecKey(jobId)).ConfigureAwait(false);
+        return entries
+            .Select(e => CronnerJobExecutionSerializer.Deserialize(e.Value!))
+            .Where(e => e is not null)
+            .OrderByDescending(e => e!.StartedAt)
+            .ThenByDescending(e => e!.Id, StringComparer.Ordinal)
+            .Take(Math.Max(0, limit))
+            .ToArray()!;
+    }
+
+    /// <inheritdoc />
+    public async Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default)
+    {
+        var entries = await Db.HashGetAllAsync(ExecKey(jobId)).ConfigureAwait(false);
+        var stale = entries
+            .Select(e => CronnerJobExecutionSerializer.Deserialize(e.Value!))
+            .Where(e => e is not null)
+            .OrderByDescending(e => e!.StartedAt)
+            .ThenByDescending(e => e!.Id, StringComparer.Ordinal)
+            .Skip(Math.Max(0, keepNewest))
+            .ToArray();
+
+        if (stale.Length == 0)
+            return;
+
+        await Db.HashDeleteAsync(ExecKey(jobId), stale.Select(e => (RedisValue)e!.Id).ToArray()).ConfigureAwait(false);
+    }
+
     private RedisKey LockKey(string id) => $"{_lockPrefix}{id}";
+
+    private RedisKey ExecKey(string jobId) => $"{_execPrefix}{jobId}";
 }

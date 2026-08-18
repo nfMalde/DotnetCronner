@@ -109,6 +109,12 @@ internal sealed class CronnerBuilder : ICronnerBuilder
         return this;
     }
 
+    public ICronnerBuilder WithExecutionHistory(int keepPerTask)
+    {
+        Options.ExecutionHistoryRetentionCount = Math.Max(0, keepPerTask);
+        return this;
+    }
+
     public ICronnerBuilder Sched<TJob>(Expression<Action<TJob>> call, Action<ICronnerScheduleOptions> options) =>
         ScheduleCore(typeof(TJob), call, options);
 
@@ -142,15 +148,15 @@ internal sealed class CronnerBuilder : ICronnerBuilder
         return this;
     }
 
-    public ICronnerBuilder AddHook(ICronnerTaskHook hook)
+    public ICronnerBuilder AddHook(ICronnerTaskHook hook, CronnerHookScope? scope = null)
     {
-        _hooks.Add(hook);
+        _hooks.Add(CronnerHookFactory.WithScope(hook, scope));
         return this;
     }
 
-    public ICronnerBuilder AddHook<THook>() where THook : class, ICronnerTaskHook =>
+    public ICronnerBuilder AddHook<THook>(CronnerHookScope? scope = null) where THook : class, ICronnerTaskHook =>
         // Routed through the registry (not DI) so it also works when configured via app.UseDotnetCronner.
-        AddHook(CronnerHookFactory.FromType(typeof(THook)));
+        AddHook(CronnerHookFactory.FromType(typeof(THook), scope));
 
     public ICronnerBuilder OnStart(Func<CronnerTaskContext, Task> handler) => Delegate(CronnerHookEvent.Start, handler);
     public ICronnerBuilder OnStart<THook>(Expression<Action<THook>> call) => Expr(CronnerHookEvent.Start, typeof(THook), call);

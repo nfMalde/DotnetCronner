@@ -21,6 +21,13 @@ public interface ICronnerStore
     // Optional (default no-op) — implement for one-off retention and persisted progress.
     Task PruneCompletedOneOffsAsync(string definitionId, int keepNewest, CancellationToken ct = default) => Task.CompletedTask;
     Task UpdateProgressAsync(string id, decimal progress, CancellationToken ct = default) => Task.CompletedTask;
+
+    // Optional (default no-op / empty) — implement to persist execution history (WithExecutionHistory).
+    Task RecordExecutionStartedAsync(CronnerJobExecution execution, CancellationToken ct = default) => Task.CompletedTask;
+    Task RecordExecutionFinishedAsync(CronnerJobExecution execution, CancellationToken ct = default) => Task.CompletedTask;
+    Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(string jobId, int limit, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<CronnerJobExecution>>(Array.Empty<CronnerJobExecution>());
+    Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken ct = default) => Task.CompletedTask;
 }
 ```
 
@@ -299,3 +306,10 @@ concurrency modes all run unchanged on top of your store.
 - `PruneCompletedOneOffsAsync` / `UpdateProgressAsync` are optional (default no-ops) — implement them for
   one-off retention and persisted progress. `UpdateProgressAsync` must touch *only* `Progress` (never the
   lock fields), so it can't race the keepalive.
+- The execution-history methods are optional (default no-op / empty), only exercised when
+  `WithExecutionHistory(keepPerTask)` is set. `RecordExecutionStartedAsync` inserts a `Running`
+  `CronnerJobExecution`; `RecordExecutionFinishedAsync` finalizes *that same record*, matched on its
+  `Id` (a per-run correlation id — don't key history by `JobId` alone, since concurrent runs share it);
+  `GetExecutionsAsync` returns them newest-first; `PruneExecutionsAsync` keeps the newest `keepNewest` per
+  job. Deleting a job should also drop its history. `JobExecutionEntity` is a ready-to-map base (add your
+  own key + job link), mirroring `CronnerJobEntity`.
