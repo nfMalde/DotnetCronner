@@ -105,7 +105,12 @@ public abstract class SchedulerExclusivityTests : IAsyncLifetime
                     await client.TriggerNowAsync(id);
 
                 await WaitUntilAsync(() => log.Count >= ids.Length * round, TimeSpan.FromSeconds(30), $"round {round} to finish");
-                // Give a hypothetical duplicate run a moment to show up before asserting.
+                // The job bodies have exited; let the engines finalize (history row, outcome, lock release) — and give
+                // a hypothetical duplicate run a moment to show up — before the next round / the assertions.
+                var finalizeStore = Backend.CreateStore();
+                await WaitUntilAsync(
+                    () => ids.All(id => finalizeStore.GetByIdAsync(id).GetAwaiter().GetResult()?.LockOwner is null),
+                    TimeSpan.FromSeconds(15), $"round {round} locks to be released");
                 await Task.Delay(600);
             }
 
@@ -279,14 +284,18 @@ public abstract class SchedulerExclusivityTests : IAsyncLifetime
 
             await WaitUntilAsync(() => log.Count >= 1, TimeSpan.FromSeconds(10), "the run to stop");
             log.Records.Single().End.ShouldBeLessThan(log.Records.Single().Start.AddSeconds(10), "the run should stop at the next keepalive, not run to completion");
-            await Task.Delay(500);
+
+            // The job body has exited; the engine still fires OnCancel, finalizes the history row, writes the
+            // outcome and then releases the lock — wait for that release rather than assuming a fixed delay.
+            CronnerJob? job = null;
+            await WaitUntilAsync(
+                () => (job = store.GetByIdAsync(id).GetAwaiter().GetResult())?.LockOwner is null,
+                TimeSpan.FromSeconds(15), "the runner to release its lock after the cancelled run");
 
             cancelledOn.ShouldBe([runnerName]);
             lockLost.ShouldBe(0, "a cancel is a cancel, not a lost lock");
-            var job = (await store.GetByIdAsync(id))!;
-            job.State.ShouldBe(CronnerTaskState.Cancelled);
+            job!.State.ShouldBe(CronnerTaskState.Cancelled);
             job.NextRunUtc.ShouldBeNull();
-            job.LockOwner.ShouldBeNull("the runner released its lock after the cancelled run");
             (await store.GetExecutionsAsync(id, 10)).Single().Status.ShouldBe(JobExecutionStatus.Cancelled);
         }
         finally

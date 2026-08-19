@@ -18,7 +18,7 @@
 #     reason  : other | legacy | critical-bugs
 #     message : custom message (empty = a default "Superseded by …" text); shown on nuget.org only
 #     unlist  : true | false — also unlist the deprecated versions (hides them from search)
-#   Env: NUGET_API_KEY (required unless mode=plan), NUGET_PACKAGE_INDEX_WAIT_SECONDS (default 600).
+#   Env: NUGET_API_KEY (required unless mode=plan), NUGET_PACKAGE_INDEX_WAIT_SECONDS (default 0 = no wait).
 #
 # Exit codes: 0 ok (incl. "nothing to deprecate"), 1 usage/error, 2 the API call failed (package is published
 # regardless — deprecate by hand on nuget.org and see the printed response).
@@ -37,7 +37,7 @@ NEW_LOWER="$(printf '%s' "$NEW" | tr '[:upper:]' '[:lower:]')"
 FLAT="https://api.nuget.org/v3-flatcontainer/${ID_LOWER}/index.json"
 API="${NUGET_DEPRECATE_API_URL:-https://www.nuget.org/api/v2/package/${ID}/deprecations}"   # override for tests only
 UA="DotnetCronner-release (+https://github.com/nfMalde/DotnetCronner; GitHub Actions)"
-WAIT="${NUGET_PACKAGE_INDEX_WAIT_SECONDS:-600}"
+WAIT="${NUGET_PACKAGE_INDEX_WAIT_SECONDS:-0}"   # 0 = do not wait for the new version to be indexed (see below)
 
 case "$MODE" in plan|stable|all) ;; *) echo "::error::mode must be plan|stable|all (got '$MODE')"; exit 1 ;; esac
 case "$REASON" in other|legacy|critical-bugs) ;; *) echo "::error::reason must be other|legacy|critical-bugs (got '$REASON')"; exit 1 ;; esac
@@ -141,10 +141,14 @@ fi
 
 : "${NUGET_API_KEY:?NUGET_API_KEY is required to deprecate}"
 
-# ── Wait for the new version to be indexed ───────────────────────────────────────────────────────────────────
-# It must exist (it is the alternate) and a freshly pushed package takes a few minutes to validate and index.
+# ── Optionally wait for the new version to be indexed ────────────────────────────────────────────────────────
+# Not required: nuget.org accepts an alternate that is still validating (its lookup has no status filter); the
+# "validated packages only" restriction is a UI rule, not an API rule. So by default the call goes out right away
+# — the push succeeded, validation takes a few minutes, and a (rare) validation failure is mailed to the owner,
+# who then fixes the deprecation by hand. Set NUGET_PACKAGE_INDEX_WAIT_SECONDS > 0 to wait until the new version
+# is indexed first (a timeout then skips the deprecation rather than pointing at a version that never appeared).
 deadline=$(( $(date +%s) + WAIT ))
-until fetch_versions | grep -qx "$NEW_LOWER"; do
+until (( WAIT <= 0 )) || fetch_versions | grep -qx "$NEW_LOWER"; do
   if (( $(date +%s) > deadline )); then
     note "- ❌ \`$ID $NEW\` did not appear in the nuget.org index within ${WAIT}s; deprecation skipped. Deprecate the older versions by hand on nuget.org (Manage package → Deprecation) once it is indexed."
     echo "::error::$ID $NEW not indexed within ${WAIT}s — previous versions were NOT deprecated."

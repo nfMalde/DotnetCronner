@@ -69,8 +69,10 @@ From the repo's **Actions** tab → **Release Package** → **Run workflow**:
    How it works and what to expect: `.github/scripts/deprecate-previous.sh` calls nuget.org's (preview)
    deprecation API with the **same temporary trusted-publishing key** that pushed the package — the key
    carries the trust policy's scopes, which cover "unlist" for a policy created without explicit scopes — so
-   there is still no stored secret. It runs last (after tag and GitHub Release), first waits for the new
-   version to be indexed, then issues one `PUT`. A failure there (e.g. a `403` because the preview API is not
+   there is still no stored secret. It runs last (after tag and GitHub Release) and issues one `PUT` right
+   away — the API accepts an alternate that is still validating (only the website UI restricts that), so
+   the older versions point at the new one a few minutes before it is installable; should validation of the
+   new version ever fail, fix the deprecation by hand. A failure there (e.g. a `403` because the preview API is not
    enabled for the account, or a policy restricted to push-only scopes) marks the run red with the response
    in the summary, but the release itself is already complete — deprecate the old versions by hand on
    nuget.org (Manage package → Deprecation) in that case. Run it once with `dry-run` to see the plan.

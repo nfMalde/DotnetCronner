@@ -374,8 +374,8 @@ jobs:
       # Reuses the temporary trusted-publishing key from the login step above (its scopes are the trust
       # policy's — `all` for a policy created without explicit scopes — which covers the unlist scope the
       # deprecation endpoint requires); the key lives ~1h, and the OIDC token can be exchanged only once, so
-      # this step must not log in again. The script first waits for the new version to be indexed (it is the
-      # alternate), then issues one PUT to nuget.org's (preview) deprecation API.
+      # this step must not log in again. The script issues one PUT to nuget.org's (preview) deprecation API right
+      # away (the API accepts an alternate that is still validating; set NUGET_PACKAGE_INDEX_WAIT_SECONDS to wait).
       - name: Deprecate previous versions on nuget.org
         if: github.event.inputs.deprecate_previous == 'stable' || github.event.inputs.deprecate_previous == 'all'
         env:
