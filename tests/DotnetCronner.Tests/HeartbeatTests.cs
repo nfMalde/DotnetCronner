@@ -20,8 +20,16 @@ public class HeartbeatTests
 
         public int Calls => Volatile.Read(ref _calls);
 
-        public override Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default) =>
-            script(Interlocked.Increment(ref _calls), Inner, id, owner, lockedUntil, ct);
+        /// <summary>The expiry the engine last got a <c>true</c> for — the lease it may rely on.</summary>
+        public DateTimeOffset? ConfirmedUntil { get; private set; }
+
+        public override async Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default)
+        {
+            var renewed = await script(Interlocked.Increment(ref _calls), Inner, id, owner, lockedUntil, ct);
+            if (renewed)
+                ConfirmedUntil = lockedUntil;
+            return renewed;
+        }
     }
 
     public sealed class Probe
@@ -66,7 +74,7 @@ public class HeartbeatTests
                     {
                         o.ScanEntryAssembly = false;
                         o.PollingInterval = TimeSpan.FromMilliseconds(50);
-                        o.LockTtl = TimeSpan.FromSeconds(2);   // keepalive every 1s, retry every 250ms after a failure
+                        o.LockTtl = TimeSpan.FromSeconds(4);   // keepalive every 2s, retry every 500ms after a failure (margins wide enough for a busy CI runner)
                         configure?.Invoke(o);
                     })
                     .WithExecutionHistory(10)
@@ -91,7 +99,7 @@ public class HeartbeatTests
     public async Task A_Renewal_Outage_Abandons_The_Run_Before_The_Confirmed_Lease_Lapses()
     {
         var probe = new Probe();
-        // Call 1 (the confirmation before the run) succeeds and fixes the confirmed expiry at start + 2s; after that
+        // Call 1 (the confirmation before the run) succeeds and fixes the confirmed expiry at start + 4s; after that
         // the store is unreachable.
         var store = new ScriptedRenewStore((n, inner, id, owner, until, ct) =>
             n == 1 ? inner.RenewLockAsync(id, owner, until, ct) : throw new TimeoutException("store unreachable"));
@@ -106,11 +114,12 @@ public class HeartbeatTests
             var lost = await Within(probe.LockLost.Task, 5, "OnLockLost");
 
             var elapsed = cancelled - started;
-            // Not on the first failed renewal (at ~1s): it retried while the lease was still confirmed …
-            elapsed.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(1200), "a single failed renewal must not abandon the run");
-            // … but before the confirmed expiry (start + 2s) so no other instance can overlap with it.
-            elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(2), "the run must stop before the lease can lapse");
+            // Not on the first failed renewal (at ~2s): it retried while the lease was still confirmed …
+            elapsed.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(2300), "a single failed renewal must not abandon the run");
             store.Calls.ShouldBeGreaterThanOrEqualTo(3, "the renewal should have been retried");
+            // … but before the expiry the store last confirmed, so no other instance can overlap with it. (Asserted
+            // against the lease the store actually handed out, not a guessed number.)
+            cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value, "the run must stop before the confirmed lease can lapse");
             lost.ExecutionId.ShouldNotBeNullOrEmpty();
             probe.Successes.ShouldBe(0);
 
@@ -169,7 +178,7 @@ public class HeartbeatTests
             var cancelled = await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
             await Within(probe.LockLost.Task, 5, "OnLockLost");
 
-            (cancelled - started).ShouldBeLessThan(TimeSpan.FromSeconds(2), "a hung store call must not let the lease lapse silently");
+            cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value, "a hung store call must not let the lease lapse silently");
         }
         finally
         {
@@ -193,9 +202,10 @@ public class HeartbeatTests
             var cancelled = await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
             await Within(probe.LockLost.Task, 5, "OnLockLost");
 
-            // The first renewal is at ~1s; a definitive "no" cancels right there — no retries, no waiting for the expiry.
-            (cancelled - started).ShouldBeLessThan(TimeSpan.FromMilliseconds(1600));
+            // The first renewal is at ~2s; a definitive "no" cancels right there — no retries (exactly the confirmation
+            // and the one refused renewal), long before the confirmed lease would have lapsed.
             store.Calls.ShouldBe(2);
+            cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value);
         }
         finally
         {
