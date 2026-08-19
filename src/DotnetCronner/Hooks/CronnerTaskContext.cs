@@ -34,6 +34,31 @@ public sealed class CronnerTaskContext
     /// <summary>This run's shared state bag, set by the scheduler. Backs <see cref="Set{T}"/>/<see cref="Get{T}"/>.</summary>
     internal CronnerRunState? RunState { get; init; }
 
+    /// <summary>
+    /// The id of the execution this hook fires for — the <see cref="CronnerJobExecution.Id"/> of the run in
+    /// flight, so your own per-run record (a log file, a display label) can be keyed to the scheduler's
+    /// execution history. The same value is visible to the job body via <see cref="ICronnerJobContext.ExecutionId"/>
+    /// and to every hook of the run, from <c>OnLockAcquire</c> through the terminal event. It is generated for
+    /// every run, whether or not execution history is persisted. <b>A retry is a new execution:</b> each
+    /// attempt gets its own id (and <see cref="CronnerJobExecution.Attempt"/> increments).
+    /// </summary>
+    public string ExecutionId => RunState?.ExecutionId ?? string.Empty;
+
+    /// <summary>
+    /// The effective execution-lock TTL in force (<see cref="CronnerOptions.LockTtl"/>): a task whose lock is
+    /// not renewed for this long becomes reclaimable by another instance. Read-only — configure it on the
+    /// builder; read it here to derive a staleness threshold for your own run record instead of hardcoding one.
+    /// </summary>
+    public TimeSpan LockTtl { get; init; }
+
+    /// <summary>
+    /// The effective keepalive cadence in force — how often a running task's lock is renewed and
+    /// <c>OnKeepAlive</c> fires (<see cref="CronnerOptions.KeepAliveInterval"/>, or <see cref="LockTtl"/>/2 when
+    /// unset). Read-only; a run with no heartbeat for a few multiples of this is stalled, and one with none for
+    /// more than <see cref="LockTtl"/> can be reclaimed.
+    /// </summary>
+    public TimeSpan KeepAliveInterval { get; init; }
+
     /// <summary>The total progress reported, for the <c>OnTotalProgressChange</c> event (and current total on scope events).</summary>
     public decimal TotalProgress { get; internal set; }
 
@@ -72,6 +97,24 @@ public sealed class CronnerTaskContext
     {
         if (RunState is { } state)
             state.ExecutionData = data;
+    }
+
+    /// <summary>
+    /// Reads back the object the job or an earlier hook of this run placed in the execution-data slot via
+    /// <see cref="SetExecutionData"/> / <see cref="ICronnerJobContext.SetExecutionData"/>, so a later hook can
+    /// augment it rather than keep its own copy. Returns <c>false</c> if nothing of type <typeparamref name="T"/>
+    /// is set. (To read what a <em>previous run</em> recorded, query <c>ICronnerClient.GetExecutionsAsync</c>.)
+    /// </summary>
+    public bool TryGetExecutionData<T>(out T value)
+    {
+        if (RunState?.ExecutionData is T typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default!;
+        return false;
     }
 
     /// <summary>Resolves a required service from this hook's scope — the same idea as <c>HasParam</c> in a <c>Sched</c> lambda.</summary>

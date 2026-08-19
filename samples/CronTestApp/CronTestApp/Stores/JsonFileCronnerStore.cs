@@ -14,7 +14,11 @@ namespace CronTestApp.Stores;
 /// <remarks>
 /// The store is effectively a singleton, so it takes no scoped dependency (a real one would inject
 /// <c>IServiceScopeFactory</c> and open a scope per operation). Its claim is atomic only within this
-/// process, which is all a single-instance scheduler needs.
+/// process, which is all a single-instance scheduler needs — but it implements the <b>full lock contract</b>
+/// a multi-instance store must honour, as a readable reference: the claim re-asserts eligibility while it
+/// writes, <c>RenewLockAsync</c>/<c>ReleaseLockAsync</c> are owner-conditional (and renewal refuses a
+/// cancelled task), <c>UpsertAsync</c> never touches an existing row's lock fields, and orphaned
+/// <c>Running</c> history rows are finalized.
 /// </remarks>
 public sealed class JsonFileCronnerStore : ICronnerStore
 {
@@ -87,7 +91,16 @@ public sealed class JsonFileCronnerStore : ICronnerStore
         {
             var jobs = await LoadAsync(cancellationToken).ConfigureAwait(false);
             job.UpdatedUtc = DateTimeOffset.UtcNow;
-            jobs[job.Id] = job.Clone();
+            var copy = job.Clone();
+            // The lock belongs to AcquireDue/RenewLock/ReleaseLock: an update keeps the row's current lock fields,
+            // so a caller writing a stale snapshot can never clear or shorten a claim taken in the meantime.
+            if (jobs.TryGetValue(job.Id, out var existing))
+            {
+                copy.LockOwner = existing.LockOwner;
+                copy.LockedUntilUtc = existing.LockedUntilUtc;
+            }
+
+            jobs[job.Id] = copy;
             await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
 
             // Attribute the write to this run's session, if one is open (see OnStartAsync/OnCloseAsync).
@@ -158,14 +171,30 @@ public sealed class JsonFileCronnerStore : ICronnerStore
         }
     }
 
+    /// <summary>
+    /// Demo switch for the engine's lease rule (<c>POST /store/renewal-outage?seconds=N</c>): until this instant
+    /// every renewal THROWS — the store "cannot tell" — exactly like a database that is briefly unreachable. A short
+    /// outage is survived (the engine retries while the last confirmed expiry is ahead); a long one makes the engine
+    /// abandon the run <em>before</em> the lease lapses and fire <c>OnLockLost</c>.
+    /// </summary>
+    public DateTimeOffset? RenewalOutageUntil { get; set; }
+
     /// <inheritdoc />
     /// <remarks>
-    /// The keepalive. Extends the lock <em>only</em> while this owner still holds it — returning
-    /// <c>false</c> is what tells the scheduler it lost the claim and must cancel its own run.
+    /// The keepalive. Extends the lock <em>only</em> while this owner still holds it and the task is not
+    /// <c>Cancelled</c> — returning <c>false</c> is what tells the scheduler it lost the claim (or was cancelled
+    /// from another instance) and must stop its own run. When the store cannot answer it <b>throws</b>; the engine
+    /// owns what happens then (see <see cref="RenewalOutageUntil"/>).
     /// </remarks>
     public async Task<bool> RenewLockAsync(
         string id, string owner, DateTimeOffset lockedUntil, CancellationToken cancellationToken = default)
     {
+        if (RenewalOutageUntil is { } outage && outage > DateTimeOffset.UtcNow)
+        {
+            _activity.Record(id, $"[store] lock renewal THREW — simulated outage for another {(outage - DateTimeOffset.UtcNow).TotalSeconds:0.0}s");
+            throw new TimeoutException("Simulated store outage: the renewal could not be confirmed.");
+        }
+
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -176,9 +205,42 @@ public sealed class JsonFileCronnerStore : ICronnerStore
                 return false;
             }
 
+            if (job.State == CronnerTaskState.Cancelled)
+            {
+                _activity.Record(id, "[store] lock renewal REFUSED — the task was cancelled (from another instance?)");
+                return false;
+            }
+
             job.LockedUntilUtc = lockedUntil;
             job.UpdatedUtc = DateTimeOffset.UtcNow;
             await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Owner-conditional release: only the instance that holds the claim can free it. A former owner whose claim was
+    /// reclaimed by someone else gets <c>false</c> and changes nothing.
+    /// </remarks>
+    public async Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var jobs = await LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (!jobs.TryGetValue(id, out var job) || !string.Equals(job.LockOwner, owner, StringComparison.Ordinal))
+                return false;
+
+            job.LockOwner = null;
+            job.LockedUntilUtc = null;
+            job.UpdatedUtc = DateTimeOffset.UtcNow;
+            await SaveAsync(jobs, cancellationToken).ConfigureAwait(false);
+            _activity.Record(id, $"[store] lock released by '{owner}'");
             return true;
         }
         finally
@@ -286,6 +348,30 @@ public sealed class JsonFileCronnerStore : ICronnerStore
             _executions.TryRemove(execution.Id, out _);
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Called by the engine right before it records a new run of a non-concurrent task: holding the lock proves
+    /// any older Running row is an orphan (its owner crashed or lost its lease), so close it as Failed.
+    /// </remarks>
+    public Task<int> FinalizeOrphanedExecutionsAsync(
+        string jobId, DateTimeOffset finishedAt, string error, CancellationToken cancellationToken = default)
+    {
+        var count = 0;
+        foreach (var execution in _executions.Values.Where(e => e.JobId == jobId && e.Status == JobExecutionStatus.Running).ToArray())
+        {
+            var finalized = execution.Clone();
+            finalized.Status = JobExecutionStatus.Failed;
+            finalized.FinishedAt = finishedAt;
+            finalized.Error = error;
+            if (_executions.TryUpdate(execution.Id, finalized, execution))
+                count++;
+        }
+
+        if (count > 0)
+            _activity.Record(jobId, $"[store] {count} orphaned execution(s) finalized as Failed ({nameof(CronnerExecutionErrors.Orphaned)})");
+        return Task.FromResult(count);
     }
 
     /// <inheritdoc />

@@ -23,7 +23,8 @@ public sealed class LoggingHook(
     public Task OnStartAsync(CronnerTaskContext context)
     {
         metrics.Started(context.Job.Id);
-        logger.LogDebug("[hook] starting {TaskId}", context.Job.Id);
+        activity.Record(context.Job.Id, $"[hook] starting execution {Short(context.ExecutionId)} (ctx.ExecutionId — the same id the job sees and the history row is keyed by)");
+        logger.LogDebug("[hook] starting {TaskId} (execution {ExecutionId})", context.Job.Id, context.ExecutionId);
         return Task.CompletedTask;
     }
 
@@ -59,7 +60,10 @@ public sealed class LoggingHook(
     public Task OnLockAcquireAsync(CronnerTaskContext context)
     {
         metrics.Lock(context.Job.Id, JobMetrics.LockEvent.Acquired);
-        activity.Record(context.Job.Id, $"[lock] acquired until {context.Job.LockedUntilUtc:HH:mm:ss} by {Short(context.Job.LockOwner)}");
+        activity.Record(
+            context.Job.Id,
+            $"[lock] acquired until {context.Job.LockedUntilUtc:HH:mm:ss} by {Short(context.Job.LockOwner)} for execution {Short(context.ExecutionId)} " +
+            $"(LockTtl {context.LockTtl.TotalSeconds:0}s, keepalive every {context.KeepAliveInterval.TotalSeconds:0}s — both read from the context, not re-configured)");
         return Task.CompletedTask;
     }
 
@@ -86,14 +90,19 @@ public sealed class LoggingHook(
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Fires when a keepalive was refused (the claim was reclaimed/released elsewhere) OR when the lease could
+    /// not be confirmed before it lapsed (the store kept throwing / hanging). Either way the run was already
+    /// cancelled before this fires, and its history row ends <c>Cancelled</c> with <c>CronnerExecutionErrors.LockLost</c>.
+    /// </remarks>
     public Task OnLockLostAsync(CronnerTaskContext context)
     {
         metrics.Lock(context.Job.Id, JobMetrics.LockEvent.Lost);
         activity.Record(
             context.Job.Id,
-            $"[lock] LOST — a keepalive found the claim gone, run stood down " +
+            $"[lock] LOST — the claim was refused or could not be confirmed before its lease lapsed; execution {Short(context.ExecutionId)} stood down " +
             $"(context still shows the old owner {Short(context.Job.LockOwner)})");
-        logger.LogWarning("[hook] {TaskId} lost its execution lock mid-run", context.Job.Id);
+        logger.LogWarning("[hook] {TaskId} lost its execution lock mid-run (execution {ExecutionId})", context.Job.Id, context.ExecutionId);
         return Task.CompletedTask;
     }
 

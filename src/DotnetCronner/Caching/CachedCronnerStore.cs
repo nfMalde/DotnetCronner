@@ -39,7 +39,9 @@ public sealed class CachedCronnerStore : ICronnerStore
     public async Task UpsertAsync(CronnerJob job, CancellationToken cancellationToken = default)
     {
         await _inner.UpsertAsync(job, cancellationToken).ConfigureAwait(false);
-        await _cache.SetAsync(job, cancellationToken).ConfigureAwait(false);
+        // Invalidate rather than cache the written object: the backing store keeps the row's own lock fields on
+        // an update, so what was persisted is not necessarily what the caller passed in.
+        await _cache.RemoveAsync(job.Id, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -64,6 +66,16 @@ public sealed class CachedCronnerStore : ICronnerStore
         string id, string owner, DateTimeOffset lockedUntil, CancellationToken cancellationToken = default) =>
         // Lock renewal is a backing-store concern; the cache holds no authoritative lock state.
         _inner.RenewLockAsync(id, owner, lockedUntil, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken cancellationToken = default)
+    {
+        // Must be forwarded explicitly: the interface default would run against THIS decorator (a possibly stale
+        // cached read + an Upsert that preserves lock fields) and never release anything.
+        var released = await _inner.ReleaseLockAsync(id, owner, cancellationToken).ConfigureAwait(false);
+        await _cache.RemoveAsync(id, cancellationToken).ConfigureAwait(false);
+        return released;
+    }
 
     /// <inheritdoc />
     public Task OnStartAsync(CronnerJob job, CancellationToken cancellationToken = default) =>
@@ -102,4 +114,8 @@ public sealed class CachedCronnerStore : ICronnerStore
     /// <inheritdoc />
     public Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken cancellationToken = default) =>
         _inner.PruneExecutionsAsync(jobId, keepNewest, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<int> FinalizeOrphanedExecutionsAsync(string jobId, DateTimeOffset finishedAt, string error, CancellationToken cancellationToken = default) =>
+        _inner.FinalizeOrphanedExecutionsAsync(jobId, finishedAt, error, cancellationToken);
 }

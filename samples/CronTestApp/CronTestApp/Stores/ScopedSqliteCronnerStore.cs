@@ -83,6 +83,11 @@ public sealed class ScopedSqliteCronnerStore : ICronnerStore, IDisposable
         return results;
     }
 
+    /// <summary>
+    /// Insert-or-update. The UPDATE branch deliberately leaves <c>lock_owner</c>/<c>locked_until</c> alone: the
+    /// lock is owned by <see cref="AcquireDueAsync"/>, <see cref="RenewLockAsync"/> and <see cref="ReleaseLockAsync"/>,
+    /// so a caller writing a stale snapshot can never clear or shorten a claim another instance took in between.
+    /// </summary>
     public async Task UpsertAsync(CronnerJob job, CancellationToken cancellationToken = default)
     {
         await using var cmd = _connection.CreateCommand();
@@ -95,8 +100,7 @@ public sealed class ScopedSqliteCronnerStore : ICronnerStore, IDisposable
             ON CONFLICT(id) DO UPDATE SET
                 name = $name, cron = $cron, state = $state, priority = $priority,
                 next_run_utc = $next, last_run_utc = $last, run_count = $runs,
-                retry_count = $retries, last_error = $error, lock_owner = $owner,
-                locked_until = $until, updated_utc = $updated;
+                retry_count = $retries, last_error = $error, updated_utc = $updated;
             """;
         Bind(cmd, job);
         await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -158,16 +162,35 @@ public sealed class ScopedSqliteCronnerStore : ICronnerStore, IDisposable
         string id, string owner, DateTimeOffset lockedUntil, CancellationToken cancellationToken = default)
     {
         await using var cmd = _connection.CreateCommand();
+        // Owner-conditional, and never for a Cancelled task (a cancel from another instance must stop the run).
         cmd.CommandText =
-            "UPDATE jobs SET locked_until = $until, updated_utc = $now WHERE id = $id AND lock_owner = $owner;";
+            "UPDATE jobs SET locked_until = $until, updated_utc = $now WHERE id = $id AND lock_owner = $owner AND state <> $cancelled;";
         cmd.Parameters.AddWithValue("$until", Text(lockedUntil));
         cmd.Parameters.AddWithValue("$now", Text(DateTimeOffset.UtcNow));
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$owner", owner);
+        cmd.Parameters.AddWithValue("$cancelled", (int)CronnerTaskState.Cancelled);
 
-        // Zero rows means the lock moved on — the engine turns that into OnLockLost.
+        // Zero rows means the lock moved on (or the task was cancelled) — the engine stops the run. If the
+        // database were unreachable this would THROW instead, and the engine keeps the run alive only while the
+        // last confirmed expiry is still ahead.
         return await cmd.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
+
+    /// <summary>Owner-conditional release: a former owner cannot free a lock someone else holds now.</summary>
+    public async Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken cancellationToken = default)
+    {
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "UPDATE jobs SET lock_owner = NULL, locked_until = NULL, updated_utc = $now WHERE id = $id AND lock_owner = $owner;";
+        cmd.Parameters.AddWithValue("$now", Text(DateTimeOffset.UtcNow));
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$owner", owner);
+        return await cmd.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    // This store keeps no execution history (the JSON store and the shipped stores do), so the history-related
+    // members keep their default no-op implementations — including FinalizeOrphanedExecutionsAsync.
 
     public void Dispose() => _connection.Dispose();
 

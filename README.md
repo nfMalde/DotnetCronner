@@ -106,8 +106,8 @@ Configure via `AddDotnetCronner(c => c.Configure(o => ...))` or `app.UseDotnetCr
 | `TimeZone` | UTC | Time zone cron expressions are evaluated in |
 | `PollingInterval` | 1s | How often the store is polled for due tasks |
 | `MaxConcurrentTasks` | processor count | Global concurrent execution limit |
-| `LockTtl` | 1 min | Lock validity window. A running task renews its claim every `LockTtl`/2, so long jobs keep their lock; a task is treated as stalled and reclaimable only after a worker stops renewing for longer than this (e.g. a crash) |
-| `KeepAliveInterval` | `null` (= `LockTtl`/2) | Pins how often the lock renews and `OnKeepAlive` fires, independently of `LockTtl` (also via `WithKeepAliveInterval(...)`). Keep it below `LockTtl` |
+| `LockTtl` | 1 min | Lock validity window. A running task renews its claim every `LockTtl`/2, so long jobs keep their lock; a task is treated as stalled and reclaimable only after a worker stops renewing for longer than this (e.g. a crash). If renewals cannot be confirmed (store unreachable) the run is abandoned *before* this window lapses — see [Execution semantics](#execution-semantics). Size it generously: the abandon margin is ≈`LockTtl`/8, so `LockTtl` should be at least 8× the longest time your job needs to honour its cancellation token (plus any clock skew between nodes) |
+| `KeepAliveInterval` | `null` (= `LockTtl`/2) | Pins how often the lock renews and `OnKeepAlive` fires, independently of `LockTtl` (also via `WithKeepAliveInterval(...)`). Keep it at or below `LockTtl`/2 (the scheduler warns above that, and logs an error at or above `LockTtl`). The effective values are exposed to hooks as `ctx.LockTtl` / `ctx.KeepAliveInterval` |
 | `OneOffRetentionCount` | 0 (keep all) | Keep only the newest N finished one-off (enqueued) instances per definition (also via `WithOneOffRetention(N)`) |
 | `ExecutionHistoryRetentionCount` | 0 (off) | Record per-run execution history, keeping the newest N runs per task (also via `WithExecutionHistory(N)`). Read with `ICronnerClient.GetExecutionsAsync(...)` |
 | `HookScope` | `Shared` | Default scope for terminal hooks: `Shared` (the job's scope) or `Isolated` (own fresh scope). Override per hook via `AddHook`/`WithHook` |
@@ -257,7 +257,7 @@ throws is logged and ignored, so it never breaks a task. There are twelve events
 | `OnLockAcquire` | when the execution lock is claimed |
 | `OnKeepAlive` | on each lock renewal (keepalive) while the task runs |
 | `OnLockRelease` | when the lock is released |
-| `OnLockLost` | when the lock is lost mid-run and the run is cancelled |
+| `OnLockLost` | when the lock is lost mid-run (a renewal was refused, or the lease could not be confirmed before it lapsed) and the run was cancelled |
 | `OnTotalProgressChange` | when a task reports total progress (`ctx.TotalProgress`) |
 | `OnProgressScopeOpened` | when a task opens a progress scope (`ctx.ProgressScope`) |
 | `OnScopeProgress` | when a task reports progress to a scope |
@@ -316,7 +316,17 @@ scope**, so a hook's `ctx.HasParam<T>()` resolves the *same* scoped instances th
 writes a summary into a scoped service and the terminal hook reads it back. **Lock and progress hooks**
 fire outside the job's execution, so each runs in its **own** fresh scope. Resolve scoped services through
 `ctx.Services` or `ctx.HasParam<T>()`; `CronnerTaskContext` exposes the `Job`, `Services`, `HasParam<T>()`,
-`CancellationToken`, `Duration`, and the `Exception` on failure.
+`CancellationToken`, `Duration`, the `Exception` on failure, and the per-run **`ExecutionId`**.
+
+**The execution id.** Every run has an id — `ctx.ExecutionId` in every hook of the run (from `OnLockAcquire`
+through the terminal event) and `ICronnerJobContext.ExecutionId` in the job body — and it is the `Id` of
+that run's execution-history row. It exists whether or not history is persisted, and it is the join key the
+scheduler's record and your own per-run record (a log file, a progress label, a foreign key) share, so your
+table can shrink to what only it can hold. **A retry is a new execution**: each attempt gets its own id (and
+`Attempt` increments on the history row). The context also carries the **effective lock settings**,
+`ctx.LockTtl` and `ctx.KeepAliveInterval`, so a consumer that tracks heartbeats can derive its staleness
+threshold from the values in force instead of hardcoding one (a run without a heartbeat for a few multiples
+of `KeepAliveInterval` is stalled; after `LockTtl` it is reclaimable by another instance).
 
 **Hook scope — per hook.** Scope applies **only to the terminal hooks** (`OnStart`/`OnSuccess`/`OnFail`/
 `OnCancel`), and you set it **per hook** on registration:
@@ -454,25 +464,75 @@ never produced a store row.
 Enable it with `WithExecutionHistory(keepPerTask)` (off by default). Each run records a `Running` entry when
 it starts and finalizes it to `Succeeded` / `Failed` / `Cancelled` (with the error and duration) when it
 ends; older entries are pruned to the per-task cap. `GetExecutionsAsync(taskId, limit)` returns them newest
-first. A `Running` entry that never finalized marks a crashed or stalled run. Each entry also records the
+first. Each entry's `Id` is the run's `ExecutionId` (see the hooks section), and each entry also records the
 owning scheduler instance (`Owner` — "which node ran this") and an optional consumer blob: call
 `ctx.SetExecutionData(mySummary)` from the job or a hook and it is stored as JSON on the entry's `Data`, so
-one history row can carry your own summary/log reference instead of a parallel table. The EF Core store
-persists history in a new `CronnerJobExecutions` table (**generate a migration after upgrading**); the Redis
-and in-memory stores need no schema step.
+one history row can carry your own summary/log reference instead of a parallel table. The slot is readable
+too — `ctx.TryGetExecutionData<T>(out var data)` returns what the job or an earlier hook of the same run
+stored, so a later hook can *augment* the record instead of keeping its own copy. The EF Core store
+persists history in a `CronnerJobExecutions` table (added in 0.0.5 — generate a migration if you upgrade
+from before that); the Redis and in-memory stores need no schema step.
+
+**Self-consistent history, even after a crash.** A run whose owner dies mid-flight cannot finalize its own
+row. The scheduler closes such orphans the next time the task runs: once it holds the task's lock, any
+older row of that task still marked `Running` belongs to a run that will never finish, so it is finalized
+as `Failed` with `Error = CronnerExecutionErrors.Orphaned` (`ICronnerStore.FinalizeOrphanedExecutionsAsync`).
+A run the scheduler abandons itself because it lost (or could no longer confirm) its lock finalizes its
+own row as `Cancelled` with `Error = CronnerExecutionErrors.LockLost`. Two residuals remain, by design:
+`Concurrent`-mode tasks legitimately overlap, so their `Running` rows are never swept; and a task that
+never runs again keeps its last `Running` row (there is no startup sweep, because on a multi-instance
+deployment another node may legitimately be running the task right then).
 
 ### Execution semantics
 
 - **`OnFail` fires per attempt, not per run.** With `DefaultMaxRetries > 0` each failed attempt fires it;
-  use `ctx.WillRetry` to act only on the final failure.
+  use `ctx.WillRetry` to act only on the final failure. Each attempt is its own execution (own
+  `ExecutionId`, `Attempt` + 1 on the history row).
 - **One run per task across processes** is enforced by the store's execution lock: while one instance holds
-  a task's claim, no other instance can claim it. `DropAndForget` / `Queue` govern missed-occurrence
-  catch-up within the owning worker; `Concurrent` is the exception — it releases the claim up front to allow
-  parallel runs.
-- **`CancelTaskAsync`** is state-dependent, not both at once: a **running** task is signalled through its
-  token (it stops if it honours the token); a **non-running** task is unscheduled.
-- **`OnLockLost`** fires precisely when a keepalive renewal (`RenewLockAsync`) returns `false` — i.e. the
-  claim was reclaimed elsewhere — and nothing else.
+  a task's claim, no other instance can claim it. The claim is an atomic, owner-conditional write on the
+  store (a conditional `UPDATE` that re-asserts eligibility in EF Core, `SET NX` on a per-task key in Redis);
+  renewal and release are owner-conditional too, and no other write — not `TriggerNowAsync`, not seeding at
+  startup, not `CancelTaskAsync` — ever touches lock fields, so a stale snapshot written back can never free
+  someone else's claim. The scheduler also claims only as many due tasks as it has free workers, so a claim
+  never waits in a queue (without a heartbeat) past its lease, and it never starts a task that is already
+  running in the same process. `DropAndForget` / `Queue` govern missed-occurrence catch-up within the owning
+  worker; `Concurrent` is the exception — it releases the claim up front to allow parallel runs. **This is
+  tested, not asserted:** `StoreLockContractTests` (8 instances racing for 40 due tasks, each handed out
+  exactly once; renew/release only by the owner; a stale `Upsert` never clears a foreign lock) and
+  `SchedulerExclusivityTests` (two schedulers on one store: every task runs once and never concurrently;
+  long runs under a short TTL; an instance that loses its store mid-run is stopped before the survivor
+  reclaims; a cancel from the other instance) run in `tests/DotnetCronner.Tests` against the in-memory and
+  SQLite stores and in `tests/DotnetCronner.IntegrationTests` against real **PostgreSQL**, **SQL Server**
+  (READ COMMITTED with and without snapshot) and **Redis** on every CI build. For a custom store, the
+  contract those tests check is spelled out in [`docs/custom-store.md`](docs/custom-store.md) — and you can
+  run the very same suites against it.
+- **The lease rule — what happens when the store cannot answer.** A keepalive renewal answered `false`
+  (the claim was reclaimed, released, or the task cancelled) is a definitive loss and the run is cancelled at
+  once. A renewal the store cannot answer — it throws, or does not answer in time — is **not** a lost lock:
+  the lease is still the worker's until the expiry that was last confirmed. The worker keeps the run alive
+  and retries at a tighter cadence while that expiry is ahead, and abandons the run (cancels it, fires
+  `OnLockLost`) as soon as the next retry could not land before the lease lapses — so the job is told to
+  stop **before** another instance is able to claim the task, never after. With the default `LockTtl`/2
+  cadence a single failure leaves three retries of slack (with a 60s TTL: renew at 30s, retries at 37.5s,
+  45s, 52.5s, abandon at 52.5s — a 7.5s margin before anyone else can claim). The only way two runs can
+  overlap is a job that ignores its `CancellationToken` for longer than that margin, or node clocks skewed
+  by more than it (for the EF Core and in-memory stores, which compare `LockedUntilUtc` against the claiming
+  node's clock; Redis expires the lock key server-side) — hence the sizing advice on `LockTtl`, and NTP.
+  Store authors: **throw** when you cannot tell, return `false` only when the claim is definitively not the
+  caller's; the scheduler owns the policy.
+- **`CancelTaskAsync`** is state-dependent, not both at once: a task **running in this process** is
+  signalled through its token (it stops if it honours the token); otherwise it is unscheduled in the store
+  (`State = Cancelled`), and if it is running on **another instance** that run stops at its next keepalive
+  (a store refuses to renew a cancelled task; the runner sees it as a cancel — `OnCancel`, not
+  `OnLockLost`). The lock itself is never touched by a cancel.
+- **`OnLockLost`** fires in exactly two situations, both after the run was cancelled: a keepalive renewal
+  was refused (`RenewLockAsync` returned `false` and the task was not cancelled — the claim was reclaimed
+  elsewhere), or the lease could not be confirmed before it lapsed (renewals kept throwing / hanging). The
+  abandoning worker writes no task outcome (the reclaiming worker owns the schedule) but does finalize its
+  own history row as `Cancelled` with `CronnerExecutionErrors.LockLost`.
+- **A trigger while the task runs elsewhere.** `TriggerNowAsync` parks a trigger for a task running in the
+  *same* process and fires it right after; for a task running on *another* instance the trigger is written to
+  the store and is superseded by that run's own final write — it does not queue a second run.
 
 ## Validation
 
@@ -493,32 +553,41 @@ The analyzer ships inside the `DotnetCronner` package, so no extra reference is 
 points open up, so pin your versions accordingly — `1.0.0` will follow once the surface has proven itself
 in real use.
 
-Running DotnetCronner across **multiple instances or nodes is not officially supported yet.** The Redis
-and EF Core stores already include the claiming primitives this needs (per-job locks and optimistic
-concurrency), but coordinated multi-node operation has not been fully validated. It is on the roadmap —
-contributions are very welcome, so feel free to open a PR.
-
-For now, run a single scheduler instance (other instances of your app can still use `ICronnerClient` to
-read and trigger tasks against the shared store).
+**Multiple instances / nodes.** Running several scheduler instances against one shared store is supported
+and validated for the **EF Core store on PostgreSQL and SQL Server** and for the **Redis store** — the
+contended-claim and two-scheduler suites described under [Execution semantics](#execution-semantics) run
+against those backends in CI. The **in-memory store** is single-process by nature. A **custom store** gives
+the same guarantee exactly when it implements the lock contract in [`docs/custom-store.md`](docs/custom-store.md)
+(atomic eligibility-re-asserting claim, owner-conditional renew/release, lock-preserving upsert) — run the
+shared contract tests against it to be sure. Two multi-instance caveats: `ICronnerClient`'s knowledge of
+*running* tasks is per process (`CancelTaskAsync` on another node stops the run at its next keepalive; a
+`TriggerNowAsync` for a task running elsewhere does not queue a second run), and the EF Core / in-memory
+stores compare lock expiries against the claiming node's clock, so keep node clocks in sync (NTP) and size
+`LockTtl` per the configuration table.
 
 Regardless of instance count, a running task holds an execution lock that the scheduler keeps alive by
 renewing it every `LockTtl`/2. A long-running job therefore keeps its claim for as long as it runs — it is
 never mistaken for a stalled worker and re-run. A task only becomes reclaimable after its worker stops
-renewing for longer than `LockTtl` (a crash or a very long GC pause); when that reclaim happens it is
-logged as a warning. If a worker loses a lock mid-run, its own execution is cancelled so the task is never
-running twice at once.
+renewing for longer than `LockTtl` (a crash, or a store outage long enough that the worker abandoned the
+run itself first — see the lease rule); when that reclaim happens it is logged as a warning, and the dead
+run's history row is closed as orphaned. If a worker loses a lock mid-run, its own execution is cancelled so
+the task is never running twice at once.
 
 ## Samples
 
 Two runnable samples live in [`samples/`](samples):
 
-- **`DotnetCronner.Sample.WebApi`** — a minimal quickstart: attribute + lambda tasks, execution history, and
-  a progress job whose reports carry custom payloads, over a handful of `ICronnerClient` endpoints
-  (`/tasks`, `/tasks/{id}/history`, `/progress`).
-- **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes,
-  all twelve hooks in every registration style, progress, the keepalive and lock loss, discovery and DI
-  modes), driven entirely by a `.env` file. It's a **Docker Compose** project (app + Redis + PostgreSQL) —
-  requires Docker + Docker Compose: copy `.env.example` to `.env` and `docker compose up --build`.
+- **`DotnetCronner.Sample.WebApi`** — a minimal quickstart: attribute + lambda tasks, execution history
+  (with the job's summary on the history row, augmented by a hook via `TryGetExecutionData`, keyed by
+  `ExecutionId`), and a progress job whose reports carry custom payloads, over a handful of
+  `ICronnerClient` endpoints (`/tasks`, `/tasks/{id}/history`, `/progress`).
+- **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes
+  incl. two hand-written stores that implement the full lock contract, all twelve hooks in every
+  registration style, progress, the keepalive, lock loss and the lease rule live via a renewal-outage
+  switch, discovery and DI modes), driven entirely by a `.env` file. It's a **Docker Compose** project
+  (app + Redis + PostgreSQL, plus an optional **second scheduler instance** on the same store to watch
+  "one run per task across processes" by hand) — requires Docker + Docker Compose: copy `.env.example` to
+  `.env` and `docker compose up --build`.
 
 ## Changelog
 

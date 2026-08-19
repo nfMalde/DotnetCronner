@@ -12,8 +12,15 @@ public sealed class CronnerExecutionTracker
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _running = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _pendingTriggers = new(StringComparer.Ordinal);
 
-    /// <summary>Registers the cancellation source for a running task.</summary>
+    /// <summary>Registers the cancellation source for a running task (replacing any existing entry — Concurrent-mode runs may overlap).</summary>
     public void Register(string id, CancellationTokenSource cts) => _running[id] = cts;
+
+    /// <summary>
+    /// Registers the cancellation source for a running task only if no run of that task is tracked yet. Returns
+    /// <c>false</c> — without registering — when one already is, so a non-concurrent task can never be started twice
+    /// in this process.
+    /// </summary>
+    public bool TryRegister(string id, CancellationTokenSource cts) => _running.TryAdd(id, cts);
 
     /// <summary>Removes the tracking entry for a task once it has finished.</summary>
     public void Unregister(string id) => _running.TryRemove(id, out _);

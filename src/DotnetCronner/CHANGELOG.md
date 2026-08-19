@@ -6,6 +6,76 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-08-19
+
+The "trust the lock" release: the cross-process single-run guarantee was reviewed, the holes that review
+found are closed (see *Fixed*), and the guarantee is now **exercised by contended tests against real
+PostgreSQL, SQL Server and Redis on every CI build** instead of being asserted in the README — plus the
+execution id and the read-back the consumers' run-tracking needed to retire. Tests demonstrate the
+scenarios they cover, not the absence of others; the known residual limits (a job that ignores its
+cancellation token beyond the abandon margin, node clock skew for the time-compared stores, custom stores
+that don't meet the contract) are documented under *Execution semantics* in the README.
+
+### Added
+- `CronnerTaskContext.ExecutionId` and `ICronnerJobContext.ExecutionId` — the id of the run in flight (the
+  `CronnerJobExecution.Id` of its history row), visible to the job body and to every hook of the run from
+  `OnLockAcquire` through the terminal event. Generated for every run even when history is off. A retry is a
+  new execution with a new id.
+- `CronnerTaskContext.TryGetExecutionData<T>(out T)` and `ICronnerJobContext.TryGetExecutionData<T>(out T)`
+  — read back what the job or an earlier hook of the same run placed in the execution-data slot, so a later
+  hook can augment the record instead of keeping its own copy.
+- `CronnerTaskContext.LockTtl` / `CronnerTaskContext.KeepAliveInterval` — the effective values in force, so a
+  consumer that tracks heartbeats can derive its staleness threshold instead of hardcoding one.
+- **The lease rule.** A keepalive renewal the store cannot answer (throws, or does not answer in time) is no
+  longer treated as "still held forever": the scheduler keeps the run alive while the last confirmed expiry
+  is ahead, retries at a tighter cadence (interval/4, ≥ 250 ms) with a per-attempt deadline, and abandons the
+  run — cancels it, fires `OnLockLost` — as soon as the next retry could not land before the lease lapses,
+  i.e. always *before* another instance can claim the task. A renewal answered `false` stays an immediate
+  loss. The scheduler also confirms a claim (one renewal) right before it starts a run and skips a task the
+  store no longer confirms as its own.
+- **Orphaned history rows are closed.** Right before recording a new run of a non-concurrent task the
+  scheduler finalizes that task's still-`Running` rows as `Failed` with `CronnerExecutionErrors.Orphaned`
+  (`ICronnerStore.FinalizeOrphanedExecutionsAsync`); a run abandoned for a lost/unconfirmable lock finalizes
+  its own row as `Cancelled` with `CronnerExecutionErrors.LockLost`.
+- Startup warnings when `KeepAliveInterval` is above `LockTtl`/2 (one failed renewal may force an abandon)
+  and an error when it is at or above `LockTtl`.
+- Shared, reusable lock contract tests (`StoreLockContractTests`, `SchedulerExclusivityTests`,
+  `tests/DotnetCronner.Tests/Shared`) that any custom store can be pointed at, and a new
+  `tests/DotnetCronner.IntegrationTests` project running them against PostgreSQL, SQL Server (READ COMMITTED
+  with and without snapshot) and Redis via Testcontainers (skipped without Docker, required in CI).
+
+### Changed
+- Lock release goes through the new owner-conditional `ICronnerStore.ReleaseLockAsync` (after the outcome
+  is persisted) instead of an `UpsertAsync` with cleared lock fields; the engine never writes lock fields
+  through `UpsertAsync` any more.
+- `OnLockLost` now fires in two situations, both after the run was cancelled: a renewal was refused
+  (reclaimed elsewhere), or the lease could not be confirmed before it lapsed. A renewal refused because the
+  task is `Cancelled` (a cancel from another instance) is classified as a cancel — `OnCancel`, not
+  `OnLockLost`.
+- `ICronnerClient.CancelTaskAsync` no longer clears lock fields; a task running on another instance stops at
+  its next keepalive because shipped stores refuse to renew a cancelled task. The scheduler honours a
+  `Cancelled` state set in the store during a run when it writes the outcome.
+- The in-memory store preserves an existing row's lock fields on `UpsertAsync`, refuses to renew a
+  `Cancelled` task, and implements `ReleaseLockAsync` / `FinalizeOrphanedExecutionsAsync`.
+- `CachedCronnerStore` forwards the new store members (a default implementation would have run against the
+  decorator and never released a lock) and invalidates instead of caching the written object on `UpsertAsync`.
+- `ICronnerJobContext` gained members (`ExecutionId`, `TryGetExecutionData`) — breaking only for external
+  implementors of that interface; `CronnerHookDispatcher` now takes `IOptions<CronnerOptions>`.
+
+### Fixed
+- **Same-process double run:** the poll loop claimed up to `MaxConcurrentTasks` due tasks per tick regardless
+  of how many workers were busy. A claimed task waiting in the dispatch queue has no heartbeat, so one that
+  waited longer than `LockTtl` lost its lease and could be claimed — and run — a second time, even by the
+  same instance. The poll loop now claims only as many tasks as there are free workers, and a non-concurrent
+  task already running in the process is never started twice.
+- **Stale snapshot could free someone else's lock:** `TriggerNowAsync`, seeding at startup and
+  `CancelTaskAsync` read a job and wrote it back in full; a claim taken by another instance in between was
+  cleared (or its expiry regressed) by that write, and a third claim could run the task concurrently. Lock
+  fields are now written only by the lock primitives (see the Abstractions changelog); the in-memory store
+  enforces it, the EF Core and Redis stores do in their own releases.
+- A hanging `RenewLockAsync` (a store call that never returns and ignores its token) no longer lets the
+  lease lapse silently under a running task — every renewal attempt has its own deadline.
+
 ## [0.0.6] - 2026-08-18
 
 ### Added

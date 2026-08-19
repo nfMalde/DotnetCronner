@@ -13,6 +13,15 @@ namespace DotnetCronner;
 /// </remarks>
 public interface ICronnerJobContext
 {
+    /// <summary>
+    /// The id of the execution in flight — the <see cref="CronnerJobExecution.Id"/> of this run — so your own
+    /// per-run record (a log file, a display label, a foreign key) can be keyed to the scheduler's execution
+    /// history. The same value reaches every hook of the run as <see cref="CronnerTaskContext.ExecutionId"/>. It
+    /// is generated for every run even when history is not persisted; <b>a retry is a new execution</b> with a
+    /// new id. Empty outside a task run.
+    /// </summary>
+    string ExecutionId { get; }
+
     /// <summary>The most recent total progress reported for this execution.</summary>
     decimal TotalProgress { get; }
 
@@ -53,6 +62,13 @@ public interface ICronnerJobContext
     /// execution history to be enabled; <c>null</c> writes no data.
     /// </summary>
     void SetExecutionData(object? data);
+
+    /// <summary>
+    /// Reads back the object currently in this run's execution-data slot (set by the job or an earlier hook of
+    /// the same run via <see cref="SetExecutionData"/>), so it can be augmented rather than duplicated. Returns
+    /// <c>false</c> if nothing of type <typeparamref name="T"/> is set.
+    /// </summary>
+    bool TryGetExecutionData<T>(out T value);
 }
 
 /// <summary>A subtask/category progress scope opened from <see cref="ICronnerJobContext.OpenProgressScope"/>.</summary>

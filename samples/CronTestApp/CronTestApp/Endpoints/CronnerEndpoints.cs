@@ -1,6 +1,7 @@
 using CronTestApp.Configuration;
 using CronTestApp.Jobs;
 using CronTestApp.Services;
+using CronTestApp.Stores;
 using DotnetCronner;
 
 namespace CronTestApp.Endpoints;
@@ -28,7 +29,8 @@ public static class CronnerEndpoints
                 "POST /tasks/{id}/run          — TriggerNow: run a task immediately (works for manual tasks)",
                 "POST /enqueue/notify          — enqueue a one-off with a typed payload (body: {to,message,attempt})",
                 "POST /tasks/{id}/cancel       — cancel a running task and unschedule it",
-                "POST /tasks/{id}/steal-lock   — steal a running task's claim to force OnLockLost",
+                "POST /tasks/{id}/steal-lock   — release a running task's claim on its owner's behalf to force OnLockLost",
+                "POST /store/renewal-outage?seconds= — (custom store) make lock renewals throw for N seconds: the lease rule, live",
                 "GET  /activity?take=&jobId=   — what the jobs actually did (newest first)",
                 "GET  /metrics                 — per-task counters, incl. lock events, from the hooks",
                 "GET  /progress                — live progress, rebuilt purely from the progress hooks",
@@ -112,9 +114,10 @@ public static class CronnerEndpoints
         // CRONNER_SLOW_KEEPALIVE_MS set longer than that interval.
         app.MapGet("/locks", (LockCadenceTracker cadence) => Results.Ok(cadence.Snapshot(options.LockTtl)));
 
-        // Takes a running task's execution lock away by writing a foreign owner straight to the store.
-        // The next keepalive renewal then fails, the scheduler cancels its own run, and OnLockLost fires —
-        // i.e. this simulates another node stealing the claim.
+        // Takes a running task's claim away: releases the lock on behalf of its current owner (the only way a
+        // claim can change hands — a store never lets an Upsert overwrite lock fields). The next keepalive
+        // renewal is then refused, the scheduler cancels its own run, and OnLockLost fires — i.e. this simulates
+        // the claim lapsing and being reclaimed by another node.
         app.MapPost("/tasks/{id}/steal-lock", async (ICronnerStore store, string id) =>
         {
             var job = await store.GetByIdAsync(id);
@@ -125,11 +128,33 @@ public static class CronnerEndpoints
                 return Results.Conflict(new { error = $"Task '{id}' does not currently hold a lock — start it first." });
 
             var previousOwner = job.LockOwner;
-            job.LockOwner = "thief-" + Guid.NewGuid().ToString("N")[..8];
-            job.LockedUntilUtc = DateTimeOffset.UtcNow.AddMinutes(5);
-            await store.UpsertAsync(job);
+            var released = await store.ReleaseLockAsync(id, previousOwner);
+            return Results.Ok(new
+            {
+                releasedOnBehalfOf = previousOwner,
+                released,
+                note = "the owner's next keepalive is refused → its run is cancelled → OnLockLost; the task is claimable again",
+            });
+        });
 
-            return Results.Ok(new { stolenFrom = previousOwner, newOwner = job.LockOwner });
+        // The lease rule, live (custom JSON store only): make every lock renewal THROW for N seconds — the store
+        // "cannot tell", like a database that is briefly unreachable. Start lock:outage first, then call this with
+        // a short N (survives: renewals are retried while the last confirmed expiry is ahead) or a long one (the run
+        // is abandoned BEFORE its lease lapses; OnLockLost fires; the history row ends Cancelled + LockLost).
+        app.MapPost("/store/renewal-outage", (ICronnerStore store, int seconds = 15) =>
+        {
+            if (store is not JsonFileCronnerStore json)
+                return Results.BadRequest(new { error = "The renewal-outage switch exists on the custom JSON store only (CRONNER_STORE=custom)." });
+
+            json.RenewalOutageUntil = DateTimeOffset.UtcNow.AddSeconds(seconds);
+            return Results.Ok(new
+            {
+                renewalsThrowUntil = json.RenewalOutageUntil,
+                lockTtlSeconds = options.LockTtl.TotalSeconds,
+                hint = seconds < options.LockTtl.TotalSeconds / 2
+                    ? "short outage: the running task should survive (watch /activity for '[store] lock renewal THREW' followed by a successful keepalive)"
+                    : "long outage: the running task is abandoned before its lease lapses (OnLockLost), then re-run",
+            });
         });
 
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
