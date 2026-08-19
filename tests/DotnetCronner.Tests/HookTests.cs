@@ -281,17 +281,21 @@ public class HookTests
         }
     }
 
-    // Wraps the in-memory store but always fails lock renewal, forcing the lost-lock path.
+    // Wraps the in-memory store but fails every lock renewal AFTER the run has started (the engine confirms the
+    // claim with one renewal right before it starts a run; that one succeeds), forcing the lost-lock path mid-run.
     private sealed class LockLosingStore : ICronnerStore
     {
         private readonly InMemoryCronnerStore _inner = new();
+        private int _renewals;
 
         public Task<CronnerJob?> GetByIdAsync(string id, CancellationToken ct = default) => _inner.GetByIdAsync(id, ct);
         public Task<IReadOnlyList<CronnerJob>> GetAsync(CronnerTaskState? state, int offset, int limit, CancellationToken ct = default) => _inner.GetAsync(state, offset, limit, ct);
         public Task UpsertAsync(CronnerJob job, CancellationToken ct = default) => _inner.UpsertAsync(job, ct);
         public Task RemoveAsync(string id, CancellationToken ct = default) => _inner.RemoveAsync(id, ct);
         public Task<IReadOnlyList<CronnerJob>> AcquireDueAsync(DateTimeOffset now, string owner, TimeSpan lockTtl, int max, CancellationToken ct = default) => _inner.AcquireDueAsync(now, owner, lockTtl, max, ct);
-        public Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default) => Task.FromResult(false);
+        public Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default) =>
+            Interlocked.Increment(ref _renewals) == 1 ? _inner.RenewLockAsync(id, owner, lockedUntil, ct) : Task.FromResult(false);
+        public Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken ct = default) => _inner.ReleaseLockAsync(id, owner, ct);
     }
 
     [Fact]

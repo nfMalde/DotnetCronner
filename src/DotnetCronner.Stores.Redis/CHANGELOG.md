@@ -6,6 +6,36 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-08-19
+
+No data-format change; existing keys are read as before.
+
+### Added
+- `ReleaseLockAsync`: a compare-and-delete Lua script on the lock key (deleted only while it still holds this
+  owner), then the lock fields in the stored job are cleared for the informational view.
+- `FinalizeOrphanedExecutionsAsync`: the job's still-`Running` history entries are rewritten as `Failed` with
+  the given finish time and error.
+- **Validated multi-instance claiming** against a real Redis in `tests/DotnetCronner.IntegrationTests` on
+  every CI build (contended claims with small batches, renew/release ownership, stale upserts, two schedulers
+  on one Redis, kill-and-reclaim, cross-instance cancel).
+
+### Changed
+- `UpsertAsync` **no longer deletes the lock key** when the incoming job has no owner, and keeps the stored
+  job's lock fields on an update. The lock key is the source of truth for claiming and is now touched only
+  by `AcquireDueAsync` (`SET NX PX`), `RenewLockAsync` (compare-and-pexpire) and `ReleaseLockAsync`
+  (compare-and-delete), so a caller writing a stale snapshot can never free a claim another instance took.
+- `RenewLockAsync` refuses to renew a `Cancelled` task (returns `false`), so a cancel issued from another
+  instance stops the running instance at its next keepalive.
+- `AcquireDueAsync` claims **highest priority first** within a page (it used to follow due-time order only),
+  re-asserts eligibility from the fresh job after winning the lock key (a stale due-set member for a cancelled
+  or rescheduled job is cleaned up instead of run), and pages through the due set (bounded).
+
+### Fixed
+- **Starvation across instances:** claimed/running jobs keep their old score in the due set until their run
+  advances the schedule, and `AcquireDueAsync` looked at the first `max` members only — so a second instance
+  with free capacity could see nothing but other instances' locked jobs and claim nothing. It now pages
+  further.
+
 ## [0.0.6] - 2026-08-18
 
 ### Changed

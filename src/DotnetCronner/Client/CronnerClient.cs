@@ -116,13 +116,14 @@ public sealed class CronnerClient : ICronnerClient
                   ?? throw new CronnerTaskNotFoundException(id);
 
         // Signal a running execution to stop; the worker will persist the final Cancelled state.
-        // If it isn't running, unschedule it here.
+        // If it isn't running here, unschedule it in the store. The lock fields are deliberately NOT touched:
+        // clearing them could free a claim another instance holds right now. If the task is running on another
+        // instance, that run sees State == Cancelled at its next keepalive (a store refuses to renew a cancelled
+        // task) and stops.
         if (!_tracker.TryCancel(id))
         {
             job.State = CronnerTaskState.Cancelled;
             job.NextRunUtc = null;
-            job.LockOwner = null;
-            job.LockedUntilUtc = null;
             await _stores.UseAsync(store => store.UpsertAsync(job, cancellationToken)).ConfigureAwait(false);
         }
     }

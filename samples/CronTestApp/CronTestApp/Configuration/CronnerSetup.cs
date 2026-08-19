@@ -127,11 +127,21 @@ public static class CronnerSetup
             })
             .OnSuccess(context =>
             {
-                activity.Record(context.Job.Id, $"[delegate hook] succeeded in {context.Duration.TotalMilliseconds:0} ms");
+                activity.Record(context.Job.Id, $"[delegate hook] succeeded in {context.Duration.TotalMilliseconds:0} ms (execution {context.ExecutionId[..8]})");
 
                 // Run-state bag: read whatever the job stashed for its hooks (progress:import sets this).
                 if (context.Get<ProgressJobs.ImportSummary>() is { } summary)
                     activity.Record(context.Job.Id, $"[run-state] job summary from the bag: {summary.Scopes} scopes ({summary.Note})");
+
+                // Execution data is readable as well as writable: AUGMENT what the job stored instead of keeping a
+                // second copy — the history row's Data then carries the job's summary plus this hook's addition,
+                // and it is keyed by context.ExecutionId, the same id the job saw (ICronnerJobContext.ExecutionId).
+                if (context.TryGetExecutionData<ProgressJobs.ImportSummary>(out var stored))
+                {
+                    context.SetExecutionData(new ProgressJobs.ImportSummaryWithOutcome(
+                        stored.Scopes, stored.Note, $"succeeded in {context.Duration.TotalMilliseconds:0} ms", context.ExecutionId));
+                    activity.Record(context.Job.Id, $"[execution-data] augmented the job's summary for history row {context.ExecutionId[..8]}");
+                }
 
                 return Task.CompletedTask;
             })

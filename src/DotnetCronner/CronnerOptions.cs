@@ -34,6 +34,16 @@ public sealed class CronnerOptions
     public TimeSpan? KeepAliveInterval { get; set; }
 
     /// <summary>
+    /// The keepalive cadence actually in force: <see cref="KeepAliveInterval"/> when set to a positive value,
+    /// otherwise <see cref="LockTtl"/>/2 floored at one second. The single source of truth for the heartbeat
+    /// loop and for <see cref="CronnerTaskContext.KeepAliveInterval"/>.
+    /// </summary>
+    internal TimeSpan EffectiveKeepAliveInterval() =>
+        KeepAliveInterval is { } configured && configured > TimeSpan.Zero
+            ? configured
+            : TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2));
+
+    /// <summary>
     /// How many finished one-off (enqueued) rows to keep per definition; older ones are pruned after each
     /// one-off completes. <c>0</c> (the default) keeps them all — retention is off.
     /// </summary>

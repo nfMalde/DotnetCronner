@@ -17,6 +17,8 @@ internal sealed class CronnerJobContext : ICronnerJobContext
     private CronnerRunState? _runState;
     private int _scopeCounter;
 
+    public string ExecutionId => _runState?.ExecutionId ?? string.Empty;
+
     public decimal TotalProgress { get; private set; }
 
     /// <summary>Wires the emitter for this run. Called by the scheduler; a task never calls this.</summary>
@@ -42,6 +44,18 @@ internal sealed class CronnerJobContext : ICronnerJobContext
     {
         if (_runState is { } state)
             state.ExecutionData = data;
+    }
+
+    public bool TryGetExecutionData<T>(out T value)
+    {
+        if (_runState?.ExecutionData is T typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default!;
+        return false;
     }
 
     public void Progress(decimal value, object? payload = null)

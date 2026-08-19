@@ -14,6 +14,13 @@ public sealed class ProgressJobs(ICronnerJobContext jobContext, JobActivityLog a
     public sealed record ImportSummary(int Scopes, string Note);
 
     /// <summary>
+    /// What the <c>OnSuccess</c> hook turns the summary into: it reads the job's record back with
+    /// <c>ctx.TryGetExecutionData</c> and augments it (outcome + the execution id it is keyed by) instead of
+    /// keeping a parallel copy — see the history row's <c>Data</c> at <c>GET /tasks/progress:import/history</c>.
+    /// </summary>
+    public sealed record ImportSummaryWithOutcome(int Scopes, string Note, string Outcome, string ExecutionId);
+
+    /// <summary>
     /// A two-phase import: total progress moves 0 → 1 while two scopes ("download", "index") report their
     /// own progress independently. Uses both the fire-and-forget and the awaitable form.
     /// </summary>

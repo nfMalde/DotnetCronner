@@ -11,6 +11,21 @@ dotnet test DotnetCronner.slnx -c Release
 
 Requires the .NET 10 SDK. Pull requests run build + test automatically (`.github/workflows/pr.yml`).
 
+There are two test projects:
+
+- `tests/DotnetCronner.Tests` — the unit suite (in-memory and SQLite stores, the engine, the analyzer). No
+  external dependencies.
+- `tests/DotnetCronner.IntegrationTests` — the **execution-lock evidence**: the shared lock contract and the
+  two-scheduler exclusivity suites (`tests/DotnetCronner.Tests/Shared`, compiled into both projects) against
+  real PostgreSQL, SQL Server (READ COMMITTED with and without snapshot) and Redis, each started in Docker
+  via Testcontainers. Without a reachable Docker they are **skipped**; with `CRONNER_REQUIRE_DOCKER=1` (what
+  CI sets) they run and fail loudly if Docker is missing, so the evidence can never silently disappear from a
+  green build. Locally: `CRONNER_REQUIRE_DOCKER=1 dotnet test tests/DotnetCronner.IntegrationTests -c Release`
+  (first run pulls three images; ~2 minutes).
+
+A custom store can be held to the same contract: implement `IStoreBackend` for it and subclass
+`StoreLockContractTests` / `SchedulerExclusivityTests` — see `docs/custom-store.md`.
+
 ## Project layout
 
 | Path | Package | Released? |
@@ -42,6 +57,23 @@ From the repo's **Actions** tab → **Release Package** → **Run workflow**:
    release or a specific number.
 4. **prerelease** *(optional)* — publishes `‹version›-preview.‹run›` and marks the GitHub Release as a
    prerelease.
+5. **deprecate_previous** *(optional, default `no`)* — after the push, mark the package's **older** versions
+   as deprecated on nuget.org with the version being released as the recommended alternate (what consumers
+   see in Visual Studio and `dotnet list package --deprecated`). `stable` deprecates older stable versions,
+   `all` also older prereleases, `dry-run` only lists what would be deprecated in the prepare summary. Tune
+   it with **deprecate_reason** (`other` | `legacy` | `critical-bugs`), **deprecate_message** (shown on
+   nuget.org only; empty = "Superseded by ‹Id› ‹Version›. See the changelog …") and **deprecate_unlist**
+   (also hide the old versions from search). Only versions *older* than the released one are touched, so
+   patching an older line never deprecates the current one.
+
+   How it works and what to expect: `.github/scripts/deprecate-previous.sh` calls nuget.org's (preview)
+   deprecation API with the **same temporary trusted-publishing key** that pushed the package — the key
+   carries the trust policy's scopes, which cover "unlist" for a policy created without explicit scopes — so
+   there is still no stored secret. It runs last (after tag and GitHub Release), first waits for the new
+   version to be indexed, then issues one `PUT`. A failure there (e.g. a `403` because the preview API is not
+   enabled for the account, or a policy restricted to push-only scopes) marks the run red with the response
+   in the summary, but the release itself is already complete — deprecate the old versions by hand on
+   nuget.org (Manage package → Deprecation) in that case. Run it once with `dry-run` to see the plan.
 
 The **prepare** job prints the exact computed version (e.g. `core v1.2.4`, tag `core-v1.2.4`) in its
 summary and runs the full build + tests. The **publish** job — the actual NuGet push, tag, and GitHub

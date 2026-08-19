@@ -11,8 +11,10 @@ public interface ICronnerStore
     Task<IReadOnlyList<CronnerJob>> GetAsync(CronnerTaskState? state, int offset, int limit, CancellationToken ct = default);
     Task UpsertAsync(CronnerJob job, CancellationToken ct = default);
     Task RemoveAsync(string id, CancellationToken ct = default);
+    // The execution lock — the three methods that own LockOwner / LockedUntilUtc (see "Two things to get right").
     Task<IReadOnlyList<CronnerJob>> AcquireDueAsync(DateTimeOffset now, string owner, TimeSpan lockTtl, int max, CancellationToken ct = default);
     Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default);
+    Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken ct = default);   // default impl: read → owner check → Upsert; override it (see §4)
 
     // Optional per-run lifecycle (default no-op) — open/close a per-run session if your store needs one.
     Task OnStartAsync(CronnerJob job, CancellationToken ct = default) => Task.CompletedTask;
@@ -28,6 +30,7 @@ public interface ICronnerStore
     Task<IReadOnlyList<CronnerJobExecution>> GetExecutionsAsync(string jobId, int limit, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<CronnerJobExecution>>(Array.Empty<CronnerJobExecution>());
     Task PruneExecutionsAsync(string jobId, int keepNewest, CancellationToken ct = default) => Task.CompletedTask;
+    Task<int> FinalizeOrphanedExecutionsAsync(string jobId, DateTimeOffset finishedAt, string error, CancellationToken ct = default) => Task.FromResult(0);
 }
 ```
 
@@ -37,7 +40,17 @@ LockedUntilUtc, CreatedUtc, UpdatedUtc). One-off enqueued instances have `Kind =
 `DefinitionId` pointing at their template, and a JSON `Payload`. You map it
 to and from your own persistence type.
 
-## Three things to get right
+## Five things to get right
+
+Four of them are the **execution lock** — the mechanism behind "one run per task across processes". The
+contract in a sentence: **`LockOwner` and `LockedUntilUtc` are changed only by `AcquireDueAsync`,
+`RenewLockAsync` and `ReleaseLockAsync`, each of them atomically and conditionally on the current owner;
+nothing else — `UpsertAsync` included — ever touches them.** The shipped stores (EF Core on PostgreSQL and SQL
+Server, Redis) are held to exactly this contract by the shared test suites `StoreLockContractTests` and
+`SchedulerExclusivityTests` in `tests/DotnetCronner.Tests/Shared`, and so can yours: point the abstract
+classes at your store (one `IStoreBackend` implementation) and you get the contended-claim, renew/release,
+stale-upsert and two-scheduler tests for free — that is the evidence to look at before you delete your own
+"already running" guard.
 
 ### 1. Lifetime — declare it
 
@@ -93,24 +106,75 @@ for each one set `State = Queued`, `LockOwner = owner`, `LockedUntilUtc = now + 
 `UpdatedUtc = now`, and persist. Returning them under `lockTtl` also gives crash recovery: if a worker
 dies, the lock expires and the task becomes eligible again.
 
-> For a **single scheduler instance** (the currently supported setup) a normal transaction is enough.
-> For multiple instances you must make the claim race-safe at the database level — e.g. `SELECT … FOR
-> UPDATE SKIP LOCKED` (Postgres/MySQL), an `UPDLOCK, READPAST` hint (SQL Server), or an optimistic
-> concurrency token — so two instances can't claim the same row.
+The claim must be **race-safe against other instances calling it at the same instant**: the eligibility
+check and the write of the new owner have to happen atomically per row. Any of these works:
+
+- a **conditional `UPDATE` that re-asserts eligibility in its `WHERE`** (the built-in EF Core store: read
+  candidates without locks, then per candidate `UPDATE … SET LockOwner = @owner … WHERE Id = @id AND
+  <eligibility predicate>`; the statement that affects 0 rows lost the race — correct at READ COMMITTED on
+  PostgreSQL, SQL Server (with and without snapshot), MySQL and SQLite, no transaction or concurrency token
+  needed);
+- `SELECT … FOR UPDATE SKIP LOCKED` (PostgreSQL/MySQL) or an `UPDLOCK, READPAST` hint (SQL Server) inside a
+  transaction (the UnitOfWork example below);
+- a `SET NX` on a per-task lock key (the Redis store);
+- an optimistic concurrency token on the row.
+
+What is **not** safe is "read the due rows, then write them unconditionally" — two instances reading the
+same page would both claim the same task. Also re-check eligibility in the claim itself (`State <> Cancelled`,
+still due) rather than trusting the candidate read. Two practical notes: claim **highest `Priority` first**
+(then earliest `NextRunUtc`), and when other instances won every candidate you looked at, look further
+(re-read / next page, bounded) so an instance with free capacity is not starved by a head-of-line full of
+rows that were just taken.
 
 ### 3. `RenewLockAsync` — keep the claim alive
 
 While a task runs, the scheduler calls `RenewLockAsync` about every `LockTtl`/2 to push `LockedUntilUtc`
 forward, so a long-running job keeps its lock instead of looking stalled and being reclaimed. Extend the
-lock **only if the row is still owned by `owner`** (`WHERE Id = id AND LockOwner = owner`), set the new
-`LockedUntilUtc`, and return whether a row was updated:
+lock **only if the row is still owned by `owner` and the task is not `Cancelled`**
+(`WHERE Id = id AND LockOwner = owner AND State <> Cancelled`), set the new `LockedUntilUtc`, and return
+whether a row was updated:
 
 - Return `true` when the update touched the row (still owned) — the run continues.
-- Return `false` when it did not (the lock was reclaimed, released, or the job is gone). The scheduler
-  reads `false` as "you lost the lock" and **cancels its own run** so the task never executes twice.
+- Return `false` when it did not — the lock was reclaimed, released, the job is gone, **or the task was set
+  to `Cancelled`** (a cancel issued from another instance). The scheduler reads `false` as "stop this run":
+  it cancels its own run, then looks at the job to tell the two cases apart (`Cancelled` → an ordinary
+  `OnCancel`; otherwise `OnLockLost`).
+- **Throw when you cannot tell** — the database is unreachable, the connection dropped mid-call. Do **not**
+  return `false` for that (one blip would kill an hour-long job) and do not swallow it and pretend success
+  (the lease would silently lapse under a run that believes it owns the task). The scheduler owns this case:
+  it keeps the run alive while the expiry it last confirmed is still ahead, retries at a tighter cadence, and
+  abandons the run *before* that expiry can lapse — so a store outage does not by itself produce a second
+  concurrent run (what remains is the job's own cancellation latency and clock skew, see the lease rule in
+  the README), and a transient blip does not cost a job. Your renewal needs no state of its own for this; it
+  just has to be honest about what it knows.
 
 The ownership check is the whole point: it must be impossible for a former owner to re-extend a lock that
 another worker has already taken over.
+
+### 4. `ReleaseLockAsync` — give the claim back, owner-conditionally
+
+When a run ends the scheduler persists the outcome (`UpsertAsync`) and then releases the claim with
+`ReleaseLockAsync(id, owner)`. Clear `LockOwner`/`LockedUntilUtc` **only while the row is still owned by
+`owner`** (`UPDATE … SET LockOwner = NULL, LockedUntilUtc = NULL WHERE Id = id AND LockOwner = owner`) and
+return whether a row was updated. A former owner whose claim was reclaimed by someone else must get `false`
+and change nothing — otherwise it would free the new owner's lock while that instance is still running.
+
+The interface ships a default implementation (read the job, check the owner, clear, `UpsertAsync`). It only
+works for a store whose `UpsertAsync` still overwrites lock fields; once you implement §5 you **must**
+override it with the atomic statement above.
+
+### 5. `UpsertAsync` — never touch a lock you did not take
+
+`UpsertAsync` is insert-or-update keyed on `Id`, and on an **update it must keep the row's current
+`LockOwner`/`LockedUntilUtc`** and ignore the values on the incoming job (on an insert, take them as-is —
+normally `null`). The reason is a race that is narrow but real: `TriggerNowAsync`, the seeding pass at
+startup and `CancelTaskAsync` all read a job and write it back a moment later. If another instance claimed
+the task in between, a full-row write would clear (or shorten) that instance's lock — and a third instance
+could claim the task while the second is still running it. Lock fields therefore have exactly three writers
+(§2–§4); everything else is hands-off. In SQL this is simply an `UPDATE` that lists every column *except*
+the two lock columns; with an ORM, re-apply the entity's current lock values after mapping the incoming job.
+
+(`UpdateProgressAsync` follows the same rule for the same reason: it touches `Progress` only.)
 
 ## Optional: a per-run session (`OnStartAsync` / `OnCloseAsync`)
 
@@ -164,12 +228,17 @@ public interface ICronnerJobRepository
 {
     Task<CronnerJobRecord?> FindAsync(string id, CancellationToken ct);
     Task<IReadOnlyList<CronnerJobRecord>> QueryAsync(CronnerTaskState? state, int offset, int limit, CancellationToken ct);
-    Task UpsertAsync(CronnerJobRecord record, CancellationToken ct);
+    Task UpsertAsync(CronnerJobRecord record, CancellationToken ct);          // insert, or update every column EXCEPT LockOwner/LockedUntilUtc
     Task RemoveAsync(string id, CancellationToken ct);
 
     // Selects due, unlocked rows AND locks them for this transaction (e.g. FOR UPDATE SKIP LOCKED),
     // ordered by Priority desc, NextRunUtc asc, limited to `max`.
     Task<IReadOnlyList<CronnerJobRecord>> ClaimDueAsync(DateTimeOffset now, int max, CancellationToken ct);
+
+    // UPDATE … SET LockedUntilUtc = @until WHERE Id = @id AND LockOwner = @owner AND State <> Cancelled  → rows affected
+    Task<int> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct);
+    // UPDATE … SET LockOwner = NULL, LockedUntilUtc = NULL WHERE Id = @id AND LockOwner = @owner          → rows affected
+    Task<int> ReleaseLockAsync(string id, string owner, CancellationToken ct);
 }
 ```
 
@@ -250,10 +319,21 @@ public sealed class UnitOfWorkCronnerStore : ICronnerStore
         string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default) =>
         InScopeAsync(async uow =>
         {
-            // Extend the lock only while this worker still owns it; return whether a row was updated.
+            // Extend the lock only while this worker still owns it (and the task is not cancelled); return
+            // whether a row was updated. A connection failure simply propagates — "cannot tell" is an exception,
+            // never `false`; the scheduler keeps the run alive while its last confirmed lease is still ahead.
             var updated = await uow.CronnerJobs.RenewLockAsync(id, owner, lockedUntil, ct);
             await uow.SaveChangesAsync(ct);
             return updated > 0;
+        });
+
+    public Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken ct = default) =>
+        InScopeAsync(async uow =>
+        {
+            // Owner-conditional: a former owner cannot free a lock that someone else holds now.
+            var released = await uow.CronnerJobs.ReleaseLockAsync(id, owner, ct);
+            await uow.SaveChangesAsync(ct);
+            return released > 0;
         });
 }
 ```
@@ -328,11 +408,18 @@ concurrency modes all run unchanged on top of your store.
 - Inject `IServiceScopeFactory`, not a scoped UnitOfWork.
 - `GetByIdAsync` returns `null` when missing; `GetAsync` filters by `state`, applies `offset`/`limit`,
   ordered oldest-first is fine.
-- `UpsertAsync` is insert-or-replace keyed on `Id`.
-- `AcquireDueAsync` respects the eligibility rules and priority ordering, sets the lock fields, and is
-  atomic (transaction for single-instance; row locking / optimistic concurrency for multi-instance).
-- `RenewLockAsync` extends `LockedUntilUtc` only while `LockOwner == owner`, and returns `false` when the
-  caller no longer owns the lock.
+- `UpsertAsync` is insert-or-update keyed on `Id` — and on an update it **leaves `LockOwner`/`LockedUntilUtc`
+  alone** (§5); only the three lock methods write them.
+- `AcquireDueAsync` respects the eligibility rules and priority ordering, sets the lock fields, and claims
+  **atomically against other instances** (conditional `UPDATE` re-asserting eligibility / `SKIP LOCKED` /
+  `SET NX` / concurrency token — never read-then-write-unconditionally), §2.
+- `RenewLockAsync` extends `LockedUntilUtc` only while `LockOwner == owner` and the task is not `Cancelled`;
+  returns `false` when the caller definitively does not hold the claim (reclaimed / released / gone /
+  cancelled), and **throws** when it cannot tell (§3).
+- `ReleaseLockAsync` clears the lock only while `LockOwner == owner` (§4) — override the default once your
+  `UpsertAsync` preserves lock fields.
+- Run the shared `StoreLockContractTests` / `SchedulerExclusivityTests` against your store (implement
+  `IStoreBackend` for it) before relying on the cross-process guarantee.
 - `OnStartAsync` / `OnCloseAsync` are optional — implement them only for a per-run session, and make sure
   `OnCloseAsync` disposes/commits what `OnStartAsync` opened.
 - Map every `CronnerJob` field (incl. `Kind`, `DefinitionId`, `Payload`, `PayloadType`, `Progress`) so
@@ -347,3 +434,9 @@ concurrency modes all run unchanged on top of your store.
   `GetExecutionsAsync` returns them newest-first; `PruneExecutionsAsync` keeps the newest `keepNewest` per
   job. Deleting a job should also drop its history. `JobExecutionEntity` is a ready-to-map base (add your
   own key + job link), mirroring `CronnerJobEntity`.
+- `FinalizeOrphanedExecutionsAsync(jobId, finishedAt, error)` (default no-op, returns 0) sets every
+  still-`Running` record of that job to `Failed` with the given `FinishedAt`/`Error` and returns the count —
+  one targeted `UPDATE … WHERE JobId = @jobId AND Status = Running`. The scheduler calls it right before it
+  records a new run of a non-concurrent task (holding the lock proves older `Running` rows are orphans of a
+  crashed owner), with `error = CronnerExecutionErrors.Orphaned`. Implement it so history stays
+  self-consistent after a crash without every consumer hand-rolling a sweeper.

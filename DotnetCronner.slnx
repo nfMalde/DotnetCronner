@@ -10,6 +10,7 @@
     <Project Path="src/DotnetCronner/DotnetCronner.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/DotnetCronner.IntegrationTests/DotnetCronner.IntegrationTests.csproj" />
     <Project Path="tests/DotnetCronner.Tests/DotnetCronner.Tests.csproj" />
   </Folder>
 </Solution>

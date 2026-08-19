@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DotnetCronner;
 
@@ -13,12 +14,14 @@ public sealed class CronnerHookDispatcher
 {
     private readonly CronnerHookRegistry _globalHooks;
     private readonly ILogger<CronnerHookDispatcher> _logger;
+    private readonly CronnerOptions _options;
 
     /// <summary>Creates the dispatcher.</summary>
-    public CronnerHookDispatcher(CronnerHookRegistry globalHooks, ILogger<CronnerHookDispatcher> logger)
+    public CronnerHookDispatcher(CronnerHookRegistry globalHooks, ILogger<CronnerHookDispatcher> logger, IOptions<CronnerOptions> options)
     {
         _globalHooks = globalHooks;
         _logger = logger;
+        _options = options.Value;
     }
 
     internal async Task DispatchAsync(
@@ -136,7 +139,7 @@ public sealed class CronnerHookDispatcher
         }
     }
 
-    private static CronnerTaskContext NewContext(
+    private CronnerTaskContext NewContext(
         IServiceProvider services, CronnerJob job, TimeSpan duration, Exception? exception,
         CancellationToken cancellationToken, decimal totalProgress, CronnerProgressInfo? progressScope,
         CronnerRunState? runState, bool willRetry, object? progressPayload = null) =>
@@ -152,5 +155,7 @@ public sealed class CronnerHookDispatcher
             RunState = runState,
             WillRetry = willRetry,
             ProgressPayload = progressPayload,
+            LockTtl = _options.LockTtl,
+            KeepAliveInterval = _options.EffectiveKeepAliveInterval(),
         };
 }

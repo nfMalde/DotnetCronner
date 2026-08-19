@@ -1,0 +1,41 @@
+# A SECOND scheduler instance over the SAME store — "one run per task across processes", live.
+#
+# Kept in its own overlay file (not in docker-compose.yml) on purpose: Visual Studio's Container Tools debug
+# every app service they find in the compose project, and a service that is not running would break F5.
+# Start both instances from the command line:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.two.yml up --build
+#
+# Use it with a store both containers share (CRONNER_STORE=redis or ef-postgres; the JSON/SQLite file stores
+# are per container). Then trigger a long task on either port (8080 / APP_B_HTTP_PORT, default 8081) and watch
+# GET /tasks/{id}/history on both: each run has exactly one Owner, the two instances alternate, and no run of
+# a task ever overlaps another — kill one container mid-run and the other picks the task up after LockTtl,
+# with the dead run's history row closed as orphaned.
+services:
+  crontestapp-b:
+    image: ${DOCKER_REGISTRY-}crontestapp
+    build:
+      context: ../../
+      dockerfile: samples/CronTestApp/CronTestApp/Dockerfile
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      CRONNER_REDIS: "redis:6379"
+      CRONNER_POSTGRES: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-cronner};Username=${POSTGRES_USER:-cronner};Password=${POSTGRES_PASSWORD:-cronner}"
+      CRONNER_CUSTOM_STORE_FILE: "/data/cronner-store-b.json"
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__DotnetCronner: Debug
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+    ports:
+      - "${APP_B_HTTP_PORT:-8081}:8080"
+    volumes:
+      - cronner-store:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped

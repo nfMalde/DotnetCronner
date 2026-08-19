@@ -19,6 +19,18 @@ internal sealed class CronnerRunState
 {
     private readonly ConcurrentDictionary<Type, object?> _items = new();
 
+    /// <summary>Creates the bag for one run, identified by <paramref name="executionId"/>.</summary>
+    public CronnerRunState(string executionId) => ExecutionId = executionId;
+
+    /// <summary>
+    /// The id of the execution this bag belongs to — the <see cref="CronnerJobExecution.Id"/> of the run in
+    /// flight. Generated per run (a retry is a new run with a new id), whether or not history is persisted.
+    /// </summary>
+    public string ExecutionId { get; }
+
+    /// <summary>The history record for this run, when execution history is enabled; otherwise <c>null</c>.</summary>
+    public CronnerJobExecution? Execution { get; set; }
+
     /// <summary>Stores <paramref name="value"/> under its runtime type, replacing any existing value of that type.</summary>
     public void Set<T>(T value) where T : notnull => _items[typeof(T)] = value;
 

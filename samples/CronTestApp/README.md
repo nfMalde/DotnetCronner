@@ -124,7 +124,8 @@ There is no bundled dashboard, so everything goes through `ICronnerClient` on th
 | `POST /tasks/{id}/run` | trigger now — the only way manual tasks ever run |
 | `POST /enqueue/notify` | enqueue a one-off with a typed payload (body: `{to,message,attempt}`) |
 | `POST /tasks/{id}/cancel` | cancel a running task and unschedule it |
-| `POST /tasks/{id}/steal-lock` | write a foreign lock owner into the store to force `OnLockLost` |
+| `POST /tasks/{id}/steal-lock` | release a running task's claim on its owner's behalf (as a reclaim by another node would) to force `OnLockLost` |
+| `POST /store/renewal-outage?seconds=` | **custom store only** — make every lock renewal *throw* for N seconds: the engine's lease rule, live (short outage survives, long one is abandoned before the lease lapses) |
 | `GET /activity?take=&jobId=` | **what the jobs actually did**, newest first |
 | `GET /metrics` | per-task counters incl. lock events, filled exclusively by the hooks |
 | `GET /progress` | live total/scope progress, rebuilt purely from the progress hooks |
@@ -158,8 +159,9 @@ tasks are registered in `Configuration/CronnerSetup.cs`.
 | `conc:queue` | `*/5 * * * * *` | `Queue` — an 8s run, missed ticks run back-to-back |
 | `conc:parallel` | `*/5 * * * * *` | `Concurrent` — runs overlap (watch `inFlight`) |
 | `progress:import` | `*/30 * * * * *` | `ICronnerJobContext` by constructor injection: total + two named scopes, each report carrying a custom payload (`note` in `/progress`); sets `SetExecutionData` + run-state bag |
-| `lock:keepalive` | *(none)* | a 35s run under a 20s `LockTtl` — the keepalive renews the claim (`OnLockAcquire`, several `OnKeepAlive`, `OnLockRelease`) |
-| `lock:stealable` | *(none)* | steal its claim with `steal-lock` → the next renewal fails, the run is cancelled, `OnLockLost` fires |
+| `lock:keepalive` | *(none)* | a 35s run under a 20s `LockTtl` — the keepalive renews the claim (`OnLockAcquire`, several `OnKeepAlive`, `OnLockRelease`); names a per-run log file after **`ICronnerJobContext.ExecutionId`**, the id every hook of the run and its history row share |
+| `lock:outage` | *(none)* | start it, then `POST /store/renewal-outage?seconds=N`: a short outage is survived, a long one is abandoned **before** the lease lapses (`OnLockLost`, history row `Cancelled` + `LockLost`) |
+| `lock:stealable` | *(none)* | take its claim away with `steal-lock` → the next renewal is refused, the run is cancelled, `OnLockLost` fires |
 | `cancel:long-runner` | *(none)* | honours its token: run it, then cancel it, and `OnCancel` fires |
 | `marker:filtered` | `*/20 * * * * *` | implements `IScheduledJob`, the marker used by `filtered` discovery |
 | `external:cleanup` | `*/2 * * * *` | lives in the **`CronTestApp.ExternalJobs` assembly** (`AutoDiscoverFromAssembly`) |
@@ -192,8 +194,13 @@ scope**; **terminal hooks** (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) run in t
 (`CRONNER_HOOK_SCOPE=shared`) so they can read the job's scoped state — set `CRONNER_HOOK_SCOPE=isolated` to
 flip the default, or pass a scope to `AddHook`/`WithHook` to pin a single hook. `LoggingHook`'s progress
 methods use `context.HasParam<T>()` to prove they resolve from the hook's own scope. The global delegate
-hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJobs.ImportSummary>()`) and
-`OnFail` logs `context.WillRetry`.
+hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJobs.ImportSummary>()`),
+reads the execution-data slot back with `context.TryGetExecutionData<…>()` and **augments** it (the
+history row's `Data` then carries the job's summary plus the outcome, keyed by `context.ExecutionId`), and
+`OnFail` logs `context.WillRetry`. Every `[hook]`/`[lock]` activity line carries the run's `ExecutionId`
+(first 8 chars) so one run can be followed from `OnLockAcquire` to `OnLockRelease`; the `[lock] acquired`
+line also prints `context.LockTtl` / `context.KeepAliveInterval` — the effective values, read from the
+context instead of being re-configured.
 
 ---
 
@@ -233,11 +240,59 @@ hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJ
   shows the *original* `LockedUntilUtc` (the renewed value is in the store), and on `OnLockLost` it still
   shows the *old* `LockOwner`, not the thief. The activity messages say so explicitly rather than pretend
   otherwise.
-* **The custom store implements the whole new contract** — `RenewLockAsync` plus the optional
-  `OnStartAsync`/`OnCloseAsync` per-run session, which logs `[store] session … opened/committed` lines so
-  you can see each run bracketed.
+* **The custom stores implement the whole lock contract**, as readable reference implementations
+  (`docs/custom-store.md` spells it out): the claim re-asserts eligibility while it writes,
+  `RenewLockAsync` and `ReleaseLockAsync` are owner-conditional (and renewal refuses a `Cancelled` task, which
+  is how a cancel from another instance stops a run), `UpsertAsync` **never touches an existing row's lock
+  fields** (a stale snapshot can't clear someone else's claim), and the JSON store finalizes orphaned
+  `Running` history rows. Plus the optional `OnStartAsync`/`OnCloseAsync` per-run session, which logs
+  `[store] session … opened/committed` lines so you can see each run bracketed.
+* **`OnLockLost` fires in two situations**, and `/activity` tells them apart: a renewal was *refused*
+  (`[store] lock renewal REFUSED`, e.g. after `steal-lock`), or the lease could not be *confirmed* before it
+  lapsed (`[store] lock renewal THREW` repeated, e.g. after a long `renewal-outage`). Either way the run was
+  cancelled **before** anyone else could claim the task, and its history row ends `Cancelled` with
+  `CronnerExecutionErrors.LockLost`. A *short* outage never reaches `OnLockLost` — the engine retries while the
+  last confirmed expiry is still ahead (with a 20s TTL: renew at 10s, retries every 2.5s, give up at ~17.5s).
 * **No task fails on purpose any more.** The `fail:*` jobs were removed once error handling was proven;
   `OnFail` is still wired, so an unexpected exception still shows up in `/metrics` and `/activity`.
+
+---
+
+## Two instances, one store
+
+The README's central promise — **one run per task across processes** — can be watched live. The overlay
+file `docker-compose.two.yml` adds a second, identical app instance (`crontestapp-b`, host port
+`APP_B_HTTP_PORT`, default 8081). It lives in its own file rather than in `docker-compose.yml` because
+Visual Studio's Container Tools debug every app service they find in the compose project, and a service
+that is not running would break F5 — so the default `docker compose up` (and VS) never sees it. It only
+makes sense with a store both containers share, so set `CRONNER_STORE=redis` or `ef-postgres` (the
+JSON/SQLite file stores are per container), then start both from the command line:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.two.yml up --build
+# trigger a long task on EITHER instance …
+curl -X POST http://localhost:8080/tasks/lock:keepalive/run
+# … and look at the history from BOTH: the run has exactly one Owner, and it is the same row everywhere
+curl http://localhost:8080/tasks/lock:keepalive/history?take=5
+curl http://localhost:8081/tasks/lock:keepalive/history?take=5
+```
+
+Things to try:
+
+* Trigger the same task a few times in a row (wait for each run to finish): `Owner` alternates between the
+  two instances' ids, every run appears exactly once, and no two runs of a task ever overlap — the claim is
+  an owner-conditional write on the shared store, not a hope.
+* **Kill an instance mid-run** (`docker compose kill crontestapp` while `lock:keepalive` is running on it):
+  the task is re-claimed by the survivor once the lease lapses (`LockTtl`, 20s here), and the dead run's
+  history row is closed as `Failed` with `CronnerExecutionErrors.Orphaned` the moment the survivor starts
+  its own run — no `Running` row lingers.
+* **Cancel from the other instance** (`POST /tasks/cancel:long-runner/cancel` on the port that is *not*
+  running it): the run stops at its next keepalive, `OnCancel` fires on the running instance (not
+  `OnLockLost`), and the row ends `Cancelled`.
+
+The same scenarios are asserted automatically against PostgreSQL, SQL Server and Redis in
+`tests/DotnetCronner.IntegrationTests` (Testcontainers), and against the in-memory and SQLite stores in
+`tests/DotnetCronner.Tests` — see the `SchedulerExclusivityTests` and `StoreLockContractTests` suites.
 
 ---
 
@@ -247,6 +302,7 @@ hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJ
 .env.example                      copy to .env; every knob, read by compose and by the app
 docker-compose.yml                app + redis 8.10 + postgres 18.6 (build context = repo root)
 docker-compose.override.yml       dev-only environment/log levels
+docker-compose.two.yml            opt-in overlay: a second scheduler instance on the same store (see "Two instances, one store")
 CronTestApp/
   Program.cs                      .env → options → services → schema → schedule → endpoints
   Configuration/
@@ -255,7 +311,7 @@ CronTestApp/
     CronnerSetup.cs               ALL the DotnetCronner wiring (store, cache, discovery, DI, hooks, Sched)
     StoreBootstrap.cs             EnsureCreated with retries while Postgres boots
   Data/AppDbContext.cs            own DbContext implementing ICronnerDbContext
-  Stores/JsonFileCronnerStore.cs  hand-written ICronnerStore incl. RenewLockAsync + per-run session
+  Stores/JsonFileCronnerStore.cs  hand-written ICronnerStore: full lock contract (claim/renew/release, lock-preserving upsert, orphan finalization) + per-run session + renewal-outage switch
   Jobs/                           all attribute + lambda job classes (lock, progress, concurrency, …)
   Hooks/LoggingHook.cs            ICronnerTaskHook via DI — all twelve events
   Hooks/AuditHook.cs              targets for the expression + per-schedule hook styles

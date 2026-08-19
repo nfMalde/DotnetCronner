@@ -44,7 +44,8 @@ app.MapGet("/tasks", async (ICronnerClient client, CronnerTaskState? state, int 
 app.MapGet("/tasks/{id}", async (ICronnerClient client, string id) =>
     await client.GetTaskByIdAsync(id) is { } task ? Results.Ok(task) : Results.NotFound());
 
-// Execution history for a task, newest first (recorded because WithExecutionHistory is enabled above).
+// Execution history for a task, newest first (recorded because WithExecutionHistory is enabled above). Each row's
+// Id is the ExecutionId the job and its hooks saw; the import job's rows carry the summary it stored (Data).
 app.MapGet("/tasks/{id}/history", async (ICronnerClient client, string id, int take = 20) =>
     Results.Ok(await client.GetExecutionsAsync(id, take)));
 

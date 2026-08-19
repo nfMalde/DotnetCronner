@@ -64,11 +64,32 @@ Accept: application/json
 ### Lock loss, step 1: start the stealable long run
 POST {{host}}/tasks/lock:stealable/run
 
-### Lock loss, step 2: steal its claim — the next keepalive fails, the run is cancelled, OnLockLost fires
+### Lock loss, step 2: take its claim away (the lock is released on its owner's behalf, as a reclaim by
+### another node would) — the next keepalive is refused, the run is cancelled, OnLockLost fires
 POST {{host}}/tasks/lock:stealable/steal-lock
 
-### ... watch it stand down
+### ... watch it stand down; its history row ends Cancelled with CronnerExecutionErrors.LockLost
 GET {{host}}/activity?take=20&jobId=lock:stealable
+Accept: application/json
+
+### The lease rule, step 1 (CRONNER_STORE=custom only): start the long run
+POST {{host}}/tasks/lock:outage/run
+
+### The lease rule, step 2a — a SHORT outage (renewals throw for 5s under a 20s TTL): the run SURVIVES.
+### /activity shows "[store] lock renewal THREW" a few times, then a successful keepalive.
+POST {{host}}/store/renewal-outage?seconds=5
+
+### The lease rule, step 2b — a LONG outage (renewals throw for 60s): the engine abandons the run BEFORE its
+### lease lapses (OnLockLost, history row Cancelled + LockLost), so no other instance could ever overlap it.
+POST {{host}}/store/renewal-outage?seconds=60
+
+### ... watch it
+GET {{host}}/activity?take=30&jobId=lock:outage
+Accept: application/json
+
+### The execution id: lock:keepalive names a per-run log file after ICronnerJobContext.ExecutionId; every hook
+### line of that run carries the same id, and it is the Id of the history row below.
+GET {{host}}/tasks/lock:keepalive/history?take=5
 Accept: application/json
 
 ### Cooperative cancellation: start it ...

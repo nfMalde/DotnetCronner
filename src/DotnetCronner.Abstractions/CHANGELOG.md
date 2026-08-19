@@ -6,6 +6,29 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-08-19
+
+### Added
+- `ICronnerStore.ReleaseLockAsync(id, owner)` — owner-conditional release of a task's execution lock; returns
+  whether the caller held it. Default-implemented (read → owner check → clear → `UpsertAsync`) so existing
+  custom stores keep compiling; a store whose `UpsertAsync` preserves lock fields (the recommended contract)
+  must override it with an atomic statement.
+- `ICronnerStore.FinalizeOrphanedExecutionsAsync(jobId, finishedAt, error)` — sets every still-`Running`
+  execution record of a job to `Failed` with the given finish time and error and returns the count. Default
+  no-op. The scheduler calls it right before recording a new run of a non-concurrent task, so history rows
+  left behind by a crashed owner are closed.
+- `CronnerExecutionErrors` — the well-known `CronnerJobExecution.Error` texts the scheduler writes itself:
+  `Orphaned` (a `Running` row whose owner never finished it) and `LockLost` (a run abandoned because its lock
+  was lost or could not be confirmed).
+
+### Changed
+- The store contract is now spelled out in the interface's XML docs (and `docs/custom-store.md`):
+  `LockOwner`/`LockedUntilUtc` are owned exclusively by `AcquireDueAsync` / `RenewLockAsync` /
+  `ReleaseLockAsync`; `UpsertAsync` must **preserve** an existing row's lock fields; `AcquireDueAsync` must
+  re-assert eligibility atomically with the claim; `RenewLockAsync` returns `false` only when the claim is
+  definitively not the caller's (reclaimed, released, gone, or the task is `Cancelled`) and **throws** when it
+  cannot tell — the scheduler owns the unconfirmed-lease policy. Source-compatible: no signature changed.
+
 ## [0.0.6] - 2026-08-18
 
 ### Added

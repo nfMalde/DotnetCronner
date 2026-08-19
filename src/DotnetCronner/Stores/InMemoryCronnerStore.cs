@@ -42,7 +42,19 @@ public sealed class InMemoryCronnerStore : ICronnerStore
     {
         var copy = job.Clone();
         copy.UpdatedUtc = DateTimeOffset.UtcNow;
-        _jobs[copy.Id] = copy;
+        lock (_acquireGate)
+        {
+            // Lock fields belong to Acquire/Renew/Release: an update keeps whatever the row currently holds, so
+            // a writer with a stale snapshot can never clear or shorten a claim taken in the meantime.
+            if (_jobs.TryGetValue(copy.Id, out var existing))
+            {
+                copy.LockOwner = existing.LockOwner;
+                copy.LockedUntilUtc = existing.LockedUntilUtc;
+            }
+
+            _jobs[copy.Id] = copy;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -86,9 +98,27 @@ public sealed class InMemoryCronnerStore : ICronnerStore
     {
         lock (_acquireGate)
         {
-            if (_jobs.TryGetValue(id, out var job) && job.LockOwner == owner)
+            // Refuse to renew a cancelled task: the engine reads that as "stop this run" (a cancel from elsewhere).
+            if (_jobs.TryGetValue(id, out var job) && job.LockOwner == owner && job.State != CronnerTaskState.Cancelled)
             {
                 job.LockedUntilUtc = lockedUntil;
+                job.UpdatedUtc = DateTimeOffset.UtcNow;
+                return Task.FromResult(true);
+            }
+        }
+
+        return Task.FromResult(false);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken cancellationToken = default)
+    {
+        lock (_acquireGate)
+        {
+            if (_jobs.TryGetValue(id, out var job) && job.LockOwner == owner)
+            {
+                job.LockOwner = null;
+                job.LockedUntilUtc = null;
                 job.UpdatedUtc = DateTimeOffset.UtcNow;
                 return Task.FromResult(true);
             }
@@ -169,6 +199,24 @@ public sealed class InMemoryCronnerStore : ICronnerStore
             _executions.TryRemove(execution.Id, out _);
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<int> FinalizeOrphanedExecutionsAsync(
+        string jobId, DateTimeOffset finishedAt, string error, CancellationToken cancellationToken = default)
+    {
+        var count = 0;
+        foreach (var execution in _executions.Values.Where(e => e.JobId == jobId && e.Status == JobExecutionStatus.Running).ToArray())
+        {
+            var finalized = execution.Clone();
+            finalized.Status = JobExecutionStatus.Failed;
+            finalized.FinishedAt = finishedAt;
+            finalized.Error = error;
+            if (_executions.TryUpdate(execution.Id, finalized, execution))
+                count++;
+        }
+
+        return Task.FromResult(count);
     }
 
     private static bool IsFinished(CronnerJob job) =>

@@ -35,6 +35,27 @@ on:
         description: DotnetCronner (core) dependency floor ('latest' = its last published tag; or type a version)
         required: false
         default: latest
+      # ── Deprecate previous versions (nuget.org) ──────────────────────────────────────────────────────────
+      # After the push, mark the OLDER versions of this package as deprecated on nuget.org, with the version
+      # being released as the recommended alternate. Uses the temporary trusted-publishing key (no stored
+      # secret); see .github/scripts/deprecate-previous.sh. 'dry-run' only lists what would be deprecated.
+      deprecate_previous:
+        description: Deprecate older versions on nuget.org, pointing at this release as the alternate ('stable' = older stable versions, 'all' = also prereleases, 'dry-run' = show only)
+        type: choice
+        options: ["no", "dry-run", "stable", "all"]   # quoted: bare `no` is a YAML 1.1 boolean
+        default: "no"
+      deprecate_reason:
+        description: Deprecation reason for the older versions (nuget.org category)
+        type: choice
+        options: [other, legacy, critical-bugs]
+        default: other
+      deprecate_message:
+        description: Deprecation message shown on nuget.org (empty = "Superseded by <Id> <Version>. See the changelog …")
+        required: false
+      deprecate_unlist:
+        description: Also UNLIST the deprecated versions (hides them from search; they stay restorable/installable)
+        type: boolean
+        default: false
 
 # Least-privilege default; the publish job widens this for the GitHub Release and the OIDC token.
 permissions:
@@ -54,6 +75,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       project: ${{ steps.plan.outputs.project }}
       pkgdir: ${{ steps.plan.outputs.pkgdir }}
+      package_id: ${{ steps.plan.outputs.package_id }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
       ver_abstractions: ${{ steps.plan.outputs.ver_abstractions }}
       ver_core: ${{ steps.plan.outputs.ver_core }}
@@ -74,10 +96,10 @@ jobs:
           set -euo pipefail
           KEY="${{ github.event.inputs.package }}"
           case "$KEY" in
-            abstractions) PROJECT="src/DotnetCronner.Abstractions/DotnetCronner.Abstractions.csproj"; PKGDIR="src/DotnetCronner.Abstractions" ;;
-            core)         PROJECT="src/DotnetCronner/DotnetCronner.csproj"; PKGDIR="src/DotnetCronner" ;;
-            redis)        PROJECT="src/DotnetCronner.Stores.Redis/DotnetCronner.Stores.Redis.csproj"; PKGDIR="src/DotnetCronner.Stores.Redis" ;;
-            efcore)       PROJECT="src/DotnetCronner.Stores.EntityFrameworkCore/DotnetCronner.Stores.EntityFrameworkCore.csproj"; PKGDIR="src/DotnetCronner.Stores.EntityFrameworkCore" ;;
+            abstractions) PROJECT="src/DotnetCronner.Abstractions/DotnetCronner.Abstractions.csproj"; PKGDIR="src/DotnetCronner.Abstractions"; PACKAGE_ID="DotnetCronner.Abstractions" ;;
+            core)         PROJECT="src/DotnetCronner/DotnetCronner.csproj"; PKGDIR="src/DotnetCronner"; PACKAGE_ID="DotnetCronner" ;;
+            redis)        PROJECT="src/DotnetCronner.Stores.Redis/DotnetCronner.Stores.Redis.csproj"; PKGDIR="src/DotnetCronner.Stores.Redis"; PACKAGE_ID="DotnetCronner.Stores.Redis" ;;
+            efcore)       PROJECT="src/DotnetCronner.Stores.EntityFrameworkCore/DotnetCronner.Stores.EntityFrameworkCore.csproj"; PKGDIR="src/DotnetCronner.Stores.EntityFrameworkCore"; PACKAGE_ID="DotnetCronner.Stores.EntityFrameworkCore" ;;
             *) echo "::error::Unknown package '$KEY'."; exit 1 ;;
           esac
 
@@ -165,6 +187,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "pkgdir=$PKGDIR" >> "$GITHUB_OUTPUT"
+          echo "package_id=$PACKAGE_ID" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "ver_abstractions=$VER_ABS" >> "$GITHUB_OUTPUT"
           echo "ver_core=$VER_CORE" >> "$GITHUB_OUTPUT"
@@ -220,11 +243,38 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Show which older versions WOULD be deprecated after the push (read-only against nuget.org), so the
+      # approver sees it before the publish gate. The real call happens in the publish job, last.
+      - name: Deprecation preview
+        if: github.event.inputs.deprecate_previous != 'no'
+        env:
+          PACKAGE_ID: ${{ steps.plan.outputs.package_id }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          MODE: ${{ github.event.inputs.deprecate_previous }}
+          REASON: ${{ github.event.inputs.deprecate_reason }}
+          MESSAGE: ${{ github.event.inputs.deprecate_message }}
+          UNLIST: ${{ github.event.inputs.deprecate_unlist }}
+        run: |
+          set -euo pipefail
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          bash .github/scripts/deprecate-previous.sh "$PACKAGE_ID" "$VERSION" plan "$REASON" "$MESSAGE" "$UNLIST" "$GITHUB_STEP_SUMMARY"
+          if [[ "$MODE" == "dry-run" ]]; then
+            echo "- _\`deprecate_previous=dry-run\`: the publish job will NOT deprecate anything._" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- _\`deprecate_previous=$MODE\`: the publish job deprecates the versions listed above (mode \`$MODE\`) after the push, once \`$PACKAGE_ID $VERSION\` is indexed._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build
         run: dotnet build DotnetCronner.slnx -c Release
 
       - name: Test
+        # The solution contains two test projects: the unit suite and DotnetCronner.IntegrationTests, which starts
+        # PostgreSQL, SQL Server and Redis in Docker (Testcontainers) to prove the cross-process execution lock on
+        # the real backends. ubuntu-latest ships Docker; CRONNER_REQUIRE_DOCKER=1 makes those tests FAIL rather than
+        # skip if Docker were ever missing, so the evidence can never silently disappear from a green build.
         run: dotnet test DotnetCronner.slnx -c Release --no-build
+        env:
+          CRONNER_REQUIRE_DOCKER: "1"
 
   publish:
     needs: prepare
@@ -317,3 +367,25 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$KEY v$VERSION" \
             "${ARGS[@]}"
+
+      # ── Deprecate the older versions (opt-in) ────────────────────────────────────────────────────────────
+      # Last on purpose: the package is pushed, tagged and released by now, so a failure here can never
+      # undo a release — it only means the older versions were not marked and you do it by hand on nuget.org.
+      # Reuses the temporary trusted-publishing key from the login step above (its scopes are the trust
+      # policy's — `all` for a policy created without explicit scopes — which covers the unlist scope the
+      # deprecation endpoint requires); the key lives ~1h, and the OIDC token can be exchanged only once, so
+      # this step must not log in again. The script first waits for the new version to be indexed (it is the
+      # alternate), then issues one PUT to nuget.org's (preview) deprecation API.
+      - name: Deprecate previous versions on nuget.org
+        if: github.event.inputs.deprecate_previous == 'stable' || github.event.inputs.deprecate_previous == 'all'
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+          PACKAGE_ID: ${{ needs.prepare.outputs.package_id }}
+          MODE: ${{ github.event.inputs.deprecate_previous }}
+          REASON: ${{ github.event.inputs.deprecate_reason }}
+          MESSAGE: ${{ github.event.inputs.deprecate_message }}
+          UNLIST: ${{ github.event.inputs.deprecate_unlist }}
+        run: |
+          set -euo pipefail
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          bash .github/scripts/deprecate-previous.sh "$PACKAGE_ID" "$VERSION" "$MODE" "$REASON" "$MESSAGE" "$UNLIST" "$GITHUB_STEP_SUMMARY"
