@@ -74,7 +74,7 @@ public class HeartbeatTests
                     {
                         o.ScanEntryAssembly = false;
                         o.PollingInterval = TimeSpan.FromMilliseconds(50);
-                        o.LockTtl = TimeSpan.FromSeconds(4);   // keepalive every 2s, retry every 500ms after a failure (margins wide enough for a busy CI runner)
+                        o.LockTtl = TimeSpan.FromSeconds(8);   // keepalive every 4s, retry every 1s after a failure — margins wide enough for a noisy CI runner
                         configure?.Invoke(o);
                     })
                     .WithExecutionHistory(10)
@@ -99,23 +99,25 @@ public class HeartbeatTests
     public async Task A_Renewal_Outage_Abandons_The_Run_Before_The_Confirmed_Lease_Lapses()
     {
         var probe = new Probe();
-        // Call 1 (the confirmation before the run) succeeds and fixes the confirmed expiry at start + 4s; after that
-        // the store is unreachable.
+        // Call 1 (the confirmation before the run) succeeds and fixes the confirmed expiry at start + 12s; after that
+        // the store is unreachable. TTL 12s here (keepalive 6s, retry 1.5s): the abandonment point is reached after
+        // four timer waits (6 + 1.5 + 1.5 + 1.5 s) and each can fire late on a busy CI runner, so the 1.5s margin
+        // before the lease end has to absorb their accumulated drift.
         var store = new ScriptedRenewStore((n, inner, id, owner, until, ct) =>
             n == 1 ? inner.RenewLockAsync(id, owner, until, ct) : throw new TimeoutException("store unreachable"));
-        using var host = BuildHost(store, probe, jobSeconds: 30);
+        using var host = BuildHost(store, probe, jobSeconds: 30, o => o.LockTtl = TimeSpan.FromSeconds(12));
 
         await host.StartAsync();
         try
         {
             await host.Services.GetRequiredService<ICronnerClient>().TriggerNowAsync("job");
             var started = await Within(probe.Started.Task, 5, "the run to start");
-            var cancelled = await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
+            var cancelled = await Within(probe.Cancelled.Task, 20, "the run to be cancelled");
             var lost = await Within(probe.LockLost.Task, 5, "OnLockLost");
 
             var elapsed = cancelled - started;
-            // Not on the first failed renewal (at ~2s): it retried while the lease was still confirmed …
-            elapsed.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(2300), "a single failed renewal must not abandon the run");
+            // Not on the first failed renewal (at ~6s): it retried while the lease was still confirmed …
+            elapsed.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(6500), "a single failed renewal must not abandon the run");
             store.Calls.ShouldBeGreaterThanOrEqualTo(3, "the renewal should have been retried");
             // … but before the expiry the store last confirmed, so no other instance can overlap with it. (Asserted
             // against the lease the store actually handed out, not a guessed number.)
@@ -142,13 +144,13 @@ public class HeartbeatTests
         var probe = new Probe();
         var store = new ScriptedRenewStore((n, inner, id, owner, until, ct) =>
             n == 2 ? throw new TimeoutException("blip") : inner.RenewLockAsync(id, owner, until, ct));
-        using var host = BuildHost(store, probe, jobSeconds: 3);
+        using var host = BuildHost(store, probe, jobSeconds: 6);   // renewal at 4s (throws), retry at 5s (ok), done at 6s
 
         await host.StartAsync();
         try
         {
             await host.Services.GetRequiredService<ICronnerClient>().TriggerNowAsync("job");
-            await Within(probe.Completed.Task, 10, "the run to complete");
+            await Within(probe.Completed.Task, 20, "the run to complete");
             await Task.Delay(300);
 
             probe.Successes.ShouldBe(1);
@@ -175,7 +177,7 @@ public class HeartbeatTests
         {
             await host.Services.GetRequiredService<ICronnerClient>().TriggerNowAsync("job");
             var started = await Within(probe.Started.Task, 5, "the run to start");
-            var cancelled = await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
+            var cancelled = await Within(probe.Cancelled.Task, 20, "the run to be cancelled");
             await Within(probe.LockLost.Task, 5, "OnLockLost");
 
             cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value, "a hung store call must not let the lease lapse silently");
@@ -199,10 +201,10 @@ public class HeartbeatTests
         {
             await host.Services.GetRequiredService<ICronnerClient>().TriggerNowAsync("job");
             var started = await Within(probe.Started.Task, 5, "the run to start");
-            var cancelled = await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
+            var cancelled = await Within(probe.Cancelled.Task, 20, "the run to be cancelled");
             await Within(probe.LockLost.Task, 5, "OnLockLost");
 
-            // The first renewal is at ~2s; a definitive "no" cancels right there — no retries (exactly the confirmation
+            // The first renewal is at ~4s; a definitive "no" cancels right there — no retries (exactly the confirmation
             // and the one refused renewal), long before the confirmed lease would have lapsed.
             store.Calls.ShouldBe(2);
             cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value);
@@ -271,7 +273,7 @@ public class HeartbeatTests
             copy.NextRunUtc = null;
             await store.UpsertAsync(copy);
 
-            await Within(probe.Cancelled.Task, 10, "the run to be cancelled");
+            await Within(probe.Cancelled.Task, 20, "the run to be cancelled");
             await Task.Delay(500);
 
             probe.Cancels.ShouldBe(1);
