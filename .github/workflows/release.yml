@@ -238,12 +238,16 @@ jobs:
       - name: Build
         run: dotnet build DotnetCronner.slnx -c Release
 
-      - name: Test
-        # The solution contains two test projects: the unit suite and DotnetCronner.IntegrationTests, which starts
-        # PostgreSQL, SQL Server and Redis in Docker (Testcontainers) to prove the cross-process execution lock on
-        # the real backends. ubuntu-latest ships Docker; CRONNER_REQUIRE_DOCKER=1 makes those tests FAIL rather than
-        # skip if Docker were ever missing, so the evidence can never silently disappear from a green build.
-        run: dotnet test DotnetCronner.slnx -c Release --no-build
+      - name: Test (unit)
+        run: dotnet test tests/DotnetCronner.Tests -c Release --no-build
+
+      - name: Test (integration — PostgreSQL, SQL Server, Redis in Docker)
+        # DotnetCronner.IntegrationTests starts PostgreSQL, SQL Server and Redis via Testcontainers to prove the
+        # cross-process execution lock on the real backends. ubuntu-latest ships Docker; CRONNER_REQUIRE_DOCKER=1
+        # makes those tests FAIL rather than skip if Docker were ever missing, so the evidence can never silently
+        # disappear from a green build. Run AFTER the unit suite (not alongside it): both contain timing-sensitive
+        # scheduler tests, and sharing the runner's two cores with container start-ups starves their timers.
+        run: dotnet test tests/DotnetCronner.IntegrationTests -c Release --no-build
         env:
           CRONNER_REQUIRE_DOCKER: "1"
 
