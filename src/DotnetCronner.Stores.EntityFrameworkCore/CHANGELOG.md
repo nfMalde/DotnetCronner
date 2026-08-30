@@ -6,6 +6,22 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-08-28
+
+Released with the suite at 0.0.8 (depends on `DotnetCronner.Abstractions >= 0.0.8` and
+`DotnetCronner >= 0.0.8`). No store code changes.
+
+### Changed
+- Downstream of the abstraction refinement (roadmap 0.0.8): the new `CronnerJobExecution.Duration` is
+  computed (`FinishedAt - StartedAt`), so it is **not** a column — nothing to map. The `CronnerJobExecutions`
+  table's `Data` column is retained but **deprecated** (execution history records an execution, not
+  application data — keep app data in your own store, correlated by the execution id). See
+  [docs/execution-history.md](../../docs/execution-history.md).
+
+### ⚠️ Migration required
+- **None.** No schema change in this release — the `Data` column is kept (deprecated, not dropped), and
+  `Duration` is computed, not stored. A future release that drops `Data` will call for a migration then.
+
 ## [0.0.7] - 2026-08-19
 
 **No migration required** — no schema change in this release.

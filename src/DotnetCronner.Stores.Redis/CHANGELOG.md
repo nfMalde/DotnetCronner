@@ -6,6 +6,17 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-08-28
+
+Released with the suite at 0.0.8 (depends on `DotnetCronner.Abstractions >= 0.0.8` and
+`DotnetCronner >= 0.0.8`). No store code changes.
+
+### Changed
+- Downstream of the abstraction refinement (roadmap 0.0.8): a persisted execution now serializes the new
+  computed `CronnerJobExecution.Duration`, and the `Data` slot it may carry is **deprecated** (still read and
+  written). No data-format break — older keys are read as before, and `Duration` is derived from the
+  timestamps on read. See [docs/execution-history.md](../../docs/execution-history.md).
+
 ## [0.0.7] - 2026-08-19
 
 No data-format change; existing keys are read as before.
