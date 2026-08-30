@@ -3,6 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Shouldly;
 
+// The execution-history test below still exercises the deprecated Data / SetExecutionData slot to prove it
+// keeps working during deprecation. Suppress the obsolete-usage error here only.
+#pragma warning disable CS0618
+
 namespace DotnetCronner.Tests;
 
 public class Cronner005Tests

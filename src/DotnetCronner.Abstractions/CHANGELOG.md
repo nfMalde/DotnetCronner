@@ -6,6 +6,26 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-08-28
+
+Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and
+documented — see [docs/execution-history.md](../../docs/execution-history.md).
+
+### Added
+- `CronnerJobExecution.Duration` — computed `FinishedAt - StartedAt` (`null` while running), so a run's
+  elapsed time is available without a stored column.
+
+### Deprecated
+- `CronnerJobExecution.Data` and `JobExecutionEntity.Data`. Execution history records an execution, not
+  application data — keep app data/logs in your own store, correlated by the execution id (`ctx.ExecutionId`).
+  Still mapped for now; to be removed in a future release.
+
+### Documentation
+- `JobExecutionEntity` now documents why it carries no primary key and no job foreign key: the scheduler
+  correlates runs by the string execution id, so the surrogate key's *type* is the store's/database's choice
+  (int / long / Guid / string) — the abstraction does not impose one. The base holds only the run's intrinsic
+  fields; each store adds its own key and job link.
+
 ## [0.0.7] - 2026-08-19
 
 ### Added

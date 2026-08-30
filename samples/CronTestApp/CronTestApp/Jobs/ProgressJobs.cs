@@ -14,9 +14,9 @@ public sealed class ProgressJobs(ICronnerJobContext jobContext, JobActivityLog a
     public sealed record ImportSummary(int Scopes, string Note);
 
     /// <summary>
-    /// What the <c>OnSuccess</c> hook turns the summary into: it reads the job's record back with
-    /// <c>ctx.TryGetExecutionData</c> and augments it (outcome + the execution id it is keyed by) instead of
-    /// keeping a parallel copy — see the history row's <c>Data</c> at <c>GET /tasks/progress:import/history</c>.
+    /// What the <c>OnSuccess</c> hook turns the summary into: it reads the job's summary from the run-state bag
+    /// and augments it (outcome + the execution id it is keyed by), recording it to the app's own log —
+    /// application data belongs in your store, correlated by <c>ctx.ExecutionId</c>, not on the history row.
     /// </summary>
     public sealed record ImportSummaryWithOutcome(int Scopes, string Note, string Outcome, string ExecutionId);
 
@@ -54,11 +54,10 @@ public sealed class ProgressJobs(ICronnerJobContext jobContext, JobActivityLog a
 
         await jobContext.ProgressAsync(1m, "done");
 
-        // Run-state bag: hand a summary to this run's hooks (read via ctx.Get in OnSuccess), and persist it
-        // onto the execution-history record's Data slot (visible at GET /tasks/progress:import/history).
+        // Run-state bag: hand a summary to this run's hooks (read via ctx.Get in OnSuccess). The hook records an
+        // augmented version to the app's own log — application data stays in your store, not on the history row.
         var summary = new ImportSummary(Scopes: 2, Note: "download+index");
         jobContext.Set(summary);
-        jobContext.SetExecutionData(summary);
 
         activity.Record("progress:import", $"finished at total progress {jobContext.TotalProgress:P0}");
     }

@@ -40,12 +40,14 @@ internal sealed class CronnerJobContext : ICronnerJobContext
         return false;
     }
 
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     public void SetExecutionData(object? data)
     {
         if (_runState is { } state)
             state.ExecutionData = data;
     }
 
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     public bool TryGetExecutionData<T>(out T value)
     {
         if (_runState?.ExecutionData is T typed)

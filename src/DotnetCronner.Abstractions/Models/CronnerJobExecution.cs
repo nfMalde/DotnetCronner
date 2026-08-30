@@ -25,6 +25,12 @@ public sealed class CronnerJobExecution
     /// <summary>When the run finished (UTC), or <c>null</c> while it is still running.</summary>
     public DateTimeOffset? FinishedAt { get; set; }
 
+    /// <summary>
+    /// How long the run took — <see cref="FinishedAt"/> minus <see cref="StartedAt"/> — or <c>null</c> while
+    /// it is still running. Computed, so it never disagrees with the timestamps and needs no storage.
+    /// </summary>
+    public TimeSpan? Duration => FinishedAt is { } finished ? finished - StartedAt : null;
+
     /// <summary>The run's status. <see cref="JobExecutionStatus.Running"/> until it finalizes.</summary>
     public JobExecutionStatus Status { get; set; } = JobExecutionStatus.Running;
 
@@ -41,9 +47,15 @@ public sealed class CronnerJobExecution
     public string? Owner { get; set; }
 
     /// <summary>
-    /// Optional consumer data attached to this run, as JSON — whatever the job/hook set via
-    /// <c>ctx.SetExecutionData(...)</c> (e.g. a run summary or a log-file reference). <c>null</c> if none.
+    /// Optional consumer data attached to this run, as JSON. <c>null</c> if none.
     /// </summary>
+    /// <remarks>
+    /// Deprecated: execution history records <em>an execution</em>, not application data. Keep
+    /// application-specific data and logs in your own store, correlated by <see cref="Id"/> (the execution id,
+    /// exposed at run time as <c>ctx.ExecutionId</c>). This slot is retained for now and will be removed in a
+    /// future release.
+    /// </remarks>
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by the execution id (ctx.ExecutionId). Removed in a future release.")]
     public string? Data { get; set; }
 
     /// <summary>Creates a shallow copy so stores can hand out snapshots without exposing their internal state.</summary>

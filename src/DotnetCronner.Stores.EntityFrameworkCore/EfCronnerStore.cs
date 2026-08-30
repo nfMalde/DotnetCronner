@@ -236,6 +236,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         // Finalize the row inserted at start (matched on the correlation id) with a targeted update.
+#pragma warning disable CS0618 // Data is obsolete; still mapped/written while the slot is phased out.
         var affected = await context.CronnerJobExecutions
             .Where(e => e.CorrelationId == execution.Id)
             .ExecuteUpdateAsync(setters => setters
@@ -244,6 +245,7 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
                 .SetProperty(e => e.Error, execution.Error)
                 .SetProperty(e => e.Data, execution.Data), cancellationToken)
             .ConfigureAwait(false);
+#pragma warning restore CS0618
 
         // If the start record never landed (history was enabled mid-run, or its insert failed), insert the
         // finished record so the run is not lost entirely.

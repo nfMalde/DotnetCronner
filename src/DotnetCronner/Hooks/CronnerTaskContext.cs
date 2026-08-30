@@ -93,6 +93,8 @@ public sealed class CronnerTaskContext
     public void Set<T>(T value) where T : notnull => RunState?.Set(value);
 
     /// <summary>Sets the object persisted onto this run's execution-history record (its <c>Data</c> slot).</summary>
+    /// <remarks>Deprecated — see <see cref="ICronnerJobContext.SetExecutionData"/>.</remarks>
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     public void SetExecutionData(object? data)
     {
         if (RunState is { } state)
@@ -105,6 +107,8 @@ public sealed class CronnerTaskContext
     /// augment it rather than keep its own copy. Returns <c>false</c> if nothing of type <typeparamref name="T"/>
     /// is set. (To read what a <em>previous run</em> recorded, query <c>ICronnerClient.GetExecutionsAsync</c>.)
     /// </summary>
+    /// <remarks>Deprecated — see <see cref="ICronnerJobContext.SetExecutionData"/>.</remarks>
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     public bool TryGetExecutionData<T>(out T value)
     {
         if (RunState?.ExecutionData is T typed)

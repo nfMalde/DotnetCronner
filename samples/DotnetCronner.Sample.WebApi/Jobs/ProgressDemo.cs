@@ -6,12 +6,13 @@ namespace DotnetCronner.Sample.WebApi.Jobs;
 /// <summary>
 /// A job that reports both total and scope progress, each report carrying a custom payload (here a
 /// per-report "current step" string). Scheduled in <c>Program.cs</c>; observed via <c>GET /progress</c>.
-/// It also stores a small summary on its execution-history row, keyed by the run's
-/// <see cref="ICronnerJobContext.ExecutionId"/> — the id every hook of the run sees too.
+/// It also keeps a small application summary about the run in the app's <em>own</em> store
+/// (<see cref="RunSummaryStore"/>), keyed by the run's <see cref="ICronnerJobContext.ExecutionId"/> — the id
+/// every hook of the run sees too, so the hook can augment the same record.
 /// </summary>
-public sealed class ImportJob
+public sealed class ImportJob(RunSummaryStore summaries)
 {
-    /// <summary>What the job records about itself; the hook augments it afterwards (see <see cref="ProgressHook"/>).</summary>
+    /// <summary>What the app records about a run; the hook augments it afterwards (see <see cref="ProgressHook"/>).</summary>
     public sealed record ImportSummary(int Chunks, string ExecutionId, string? Outcome = null);
 
     /// <summary>The context arrives via <c>HasParam&lt;ICronnerJobContext&gt;()</c> from the schedule lambda.</summary>
@@ -38,10 +39,31 @@ public sealed class ImportJob
 
         await ctx.ProgressAsync(1m, "done");
 
-        // Persist a summary onto this run's history row (its Data slot). ctx.ExecutionId is the row's Id, so a
-        // per-run artefact of your own (a log file, a display label) can be keyed to it without a second table.
-        ctx.SetExecutionData(new ImportSummary(Chunks: 3, ExecutionId: ctx.ExecutionId));
+        // The recommended pattern: keep application data in your OWN store, correlated by the execution id.
+        // ctx.ExecutionId matches the history row's id and is visible to every hook of this run, so the hook
+        // can find and augment the same summary (see ProgressHook.OnSuccessAsync). Exposed at GET /runs.
+        summaries.Save(new ImportSummary(Chunks: 3, ExecutionId: ctx.ExecutionId));
     }
+}
+
+/// <summary>
+/// The application's own per-run summary store, keyed by execution id. This is what replaces the deprecated
+/// execution-data slot: execution history records <em>an execution</em>; your own data lives here, correlated
+/// by <see cref="ICronnerJobContext.ExecutionId"/>. Served from <c>GET /runs</c>.
+/// </summary>
+public sealed class RunSummaryStore
+{
+    private readonly ConcurrentDictionary<string, ImportJob.ImportSummary> _byExecution = new(StringComparer.Ordinal);
+
+    /// <summary>Saves (or replaces) the summary for its execution id.</summary>
+    public void Save(ImportJob.ImportSummary summary) => _byExecution[summary.ExecutionId] = summary;
+
+    /// <summary>Reads back the summary for an execution id, if any.</summary>
+    public bool TryGet(string executionId, out ImportJob.ImportSummary summary) =>
+        _byExecution.TryGetValue(executionId, out summary!);
+
+    /// <summary>A JSON-friendly snapshot, newest arbitrary order.</summary>
+    public IReadOnlyCollection<ImportJob.ImportSummary> Snapshot() => _byExecution.Values.ToArray();
 }
 
 /// <summary>Latest progress per task, rebuilt purely from the progress hooks. Served from <c>GET /progress</c>.</summary>
@@ -78,8 +100,8 @@ public sealed class ProgressLog
     }
 }
 
-/// <summary>Feeds <see cref="ProgressLog"/> from the total and scope progress hooks, reading the per-report payload.</summary>
-public sealed class ProgressHook(ProgressLog log) : ICronnerTaskHook
+/// <summary>Feeds <see cref="ProgressLog"/> from the progress hooks, and augments the run summary on success.</summary>
+public sealed class ProgressHook(ProgressLog log, RunSummaryStore summaries) : ICronnerTaskHook
 {
     /// <inheritdoc />
     public Task OnTotalProgressChangeAsync(CronnerTaskContext context)
@@ -97,14 +119,14 @@ public sealed class ProgressHook(ProgressLog log) : ICronnerTaskHook
 
     /// <inheritdoc />
     /// <remarks>
-    /// The execution-data slot is readable as well as writable: read back what the job stored for THIS run
-    /// (same <c>context.ExecutionId</c>) and augment it, instead of keeping a second record. The result lands on
-    /// the history row's <c>Data</c> — see <c>GET /tasks/import/history</c>.
+    /// The hook augments the app's own summary for THIS run — found by <c>context.ExecutionId</c>, the same id
+    /// the job used — instead of keeping a second copy. It records the duration from the history row via
+    /// <c>context.Duration</c>. See <c>GET /runs</c>.
     /// </remarks>
     public Task OnSuccessAsync(CronnerTaskContext context)
     {
-        if (context.TryGetExecutionData<ImportJob.ImportSummary>(out var summary))
-            context.SetExecutionData(summary with { Outcome = $"succeeded in {context.Duration.TotalMilliseconds:0} ms" });
+        if (summaries.TryGet(context.ExecutionId, out var summary))
+            summaries.Save(summary with { Outcome = $"succeeded in {context.Duration.TotalMilliseconds:0} ms" });
         return Task.CompletedTask;
     }
 }

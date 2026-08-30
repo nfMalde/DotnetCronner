@@ -569,7 +569,9 @@ public sealed class CronnerHostedService : BackgroundService
         execution.Status = lockLost || cancelled ? JobExecutionStatus.Cancelled
             : failure is not null ? JobExecutionStatus.Failed : JobExecutionStatus.Succeeded;
         execution.Error = lockLost ? CronnerExecutionErrors.LockLost : failure?.Message;
+#pragma warning disable CS0618 // Data is obsolete; still written while the slot is phased out.
         execution.Data = SerializeExecutionData(runState.ExecutionData);
+#pragma warning restore CS0618
         await SafeRecordExecutionFinishedAsync(execution, stoppingToken).ConfigureAwait(false);
         await SafePruneExecutionsAsync(execution.JobId, _options.ExecutionHistoryRetentionCount, stoppingToken).ConfigureAwait(false);
     }
