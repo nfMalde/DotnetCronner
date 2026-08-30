@@ -6,6 +6,18 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-08-28
+
+Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and
+documented — see [docs/execution-history.md](../../docs/execution-history.md).
+
+### Deprecated
+- `ICronnerJobContext.SetExecutionData` / `TryGetExecutionData<T>` and the `CronnerTaskContext` equivalents.
+  Execution history records an execution, not application data — keep app data/logs in your own store,
+  correlated by `ctx.ExecutionId`, rather than on the execution record. Still functional; to be removed in a
+  future release. The `DotnetCronner.Sample.WebApi` sample shows the replacement pattern (a `RunSummaryStore`
+  behind `GET /runs`, keyed by `ExecutionId`).
+
 ## [0.0.7] - 2026-08-19
 
 The "trust the lock" release: the cross-process single-run guarantee was reviewed, the holes that review

@@ -7,6 +7,18 @@ namespace DotnetCronner.Tests;
 
 public class ExecutionHistoryTests
 {
+    [Fact]
+    public void Duration_Is_Null_While_Running_Then_The_Elapsed_Time_Once_Finished()
+    {
+        var started = DateTimeOffset.UtcNow;
+        var run = new CronnerJobExecution { Id = "e", JobId = "j", StartedAt = started };
+
+        run.Duration.ShouldBeNull();                 // no FinishedAt yet → still running
+
+        run.FinishedAt = started.AddSeconds(3);
+        run.Duration.ShouldBe(TimeSpan.FromSeconds(3));
+    }
+
     public sealed class Signals
     {
         public int Runs;

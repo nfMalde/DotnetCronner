@@ -158,7 +158,7 @@ tasks are registered in `Configuration/CronnerSetup.cs`.
 | `conc:drop` | `*/5 * * * * *` | `DropAndForget` — a 12s run swallows the ticks it overlaps |
 | `conc:queue` | `*/5 * * * * *` | `Queue` — an 8s run, missed ticks run back-to-back |
 | `conc:parallel` | `*/5 * * * * *` | `Concurrent` — runs overlap (watch `inFlight`) |
-| `progress:import` | `*/30 * * * * *` | `ICronnerJobContext` by constructor injection: total + two named scopes, each report carrying a custom payload (`note` in `/progress`); sets `SetExecutionData` + run-state bag |
+| `progress:import` | `*/30 * * * * *` | `ICronnerJobContext` by constructor injection: total + two named scopes, each report carrying a custom payload (`note` in `/progress`); hands a summary to its hooks via the run-state bag |
 | `lock:keepalive` | *(none)* | a 35s run under a 20s `LockTtl` — the keepalive renews the claim (`OnLockAcquire`, several `OnKeepAlive`, `OnLockRelease`); names a per-run log file after **`ICronnerJobContext.ExecutionId`**, the id every hook of the run and its history row share |
 | `lock:outage` | *(none)* | start it, then `POST /store/renewal-outage?seconds=N`: a short outage is survived, a long one is abandoned **before** the lease lapses (`OnLockLost`, history row `Cancelled` + `LockLost`) |
 | `lock:stealable` | *(none)* | take its claim away with `steal-lock` → the next renewal is refused, the run is cancelled, `OnLockLost` fires |
@@ -195,8 +195,8 @@ scope**; **terminal hooks** (`OnStart`/`OnSuccess`/`OnFail`/`OnCancel`) run in t
 flip the default, or pass a scope to `AddHook`/`WithHook` to pin a single hook. `LoggingHook`'s progress
 methods use `context.HasParam<T>()` to prove they resolve from the hook's own scope. The global delegate
 hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJobs.ImportSummary>()`),
-reads the execution-data slot back with `context.TryGetExecutionData<…>()` and **augments** it (the
-history row's `Data` then carries the job's summary plus the outcome, keyed by `context.ExecutionId`), and
+**augments** it with the outcome, and records it to the app's own log keyed by `context.ExecutionId` — the
+recommended way to keep application data (execution history records an execution, not app data) — and
 `OnFail` logs `context.WillRetry`. Every `[hook]`/`[lock]` activity line carries the run's `ExecutionId`
 (first 8 chars) so one run can be followed from `OnLockAcquire` to `OnLockRelease`; the `[lock] acquired`
 line also prints `context.LockTtl` / `context.KeepAliveInterval` — the effective values, read from the

@@ -57,17 +57,21 @@ public interface ICronnerJobContext
     bool TryGet<T>(out T value);
 
     /// <summary>
-    /// Sets the object persisted (as JSON) onto this run's execution-history record (its <c>Data</c> slot),
-    /// so a store row can carry your own summary/log reference alongside the built-in fields. Requires
-    /// execution history to be enabled; <c>null</c> writes no data.
+    /// Sets an object persisted (as JSON) onto this run's execution-history <c>Data</c> slot.
     /// </summary>
+    /// <remarks>
+    /// Deprecated: execution history records an execution, not application data. Keep app data/logs in your
+    /// own store, correlated by <see cref="ExecutionId"/>. Still functional for now; removed in a future release.
+    /// </remarks>
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     void SetExecutionData(object? data);
 
     /// <summary>
-    /// Reads back the object currently in this run's execution-data slot (set by the job or an earlier hook of
-    /// the same run via <see cref="SetExecutionData"/>), so it can be augmented rather than duplicated. Returns
-    /// <c>false</c> if nothing of type <typeparamref name="T"/> is set.
+    /// Reads back the object currently in this run's execution-data slot, so it can be augmented rather than
+    /// duplicated. Returns <c>false</c> if nothing of type <typeparamref name="T"/> is set.
     /// </summary>
+    /// <remarks>Deprecated alongside <see cref="SetExecutionData"/> — see its remarks.</remarks>
+    [Obsolete("Execution history records an execution, not application data — keep app data/logs in your own store, correlated by ctx.ExecutionId. Removed in a future release.")]
     bool TryGetExecutionData<T>(out T value);
 }
 

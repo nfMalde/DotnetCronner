@@ -462,16 +462,26 @@ never produced a store row.
 ### Execution history
 
 Enable it with `WithExecutionHistory(keepPerTask)` (off by default). Each run records a `Running` entry when
-it starts and finalizes it to `Succeeded` / `Failed` / `Cancelled` (with the error and duration) when it
-ends; older entries are pruned to the per-task cap. `GetExecutionsAsync(taskId, limit)` returns them newest
-first. Each entry's `Id` is the run's `ExecutionId` (see the hooks section), and each entry also records the
-owning scheduler instance (`Owner` — "which node ran this") and an optional consumer blob: call
-`ctx.SetExecutionData(mySummary)` from the job or a hook and it is stored as JSON on the entry's `Data`, so
-one history row can carry your own summary/log reference instead of a parallel table. The slot is readable
-too — `ctx.TryGetExecutionData<T>(out var data)` returns what the job or an earlier hook of the same run
-stored, so a later hook can *augment* the record instead of keeping its own copy. The EF Core store
-persists history in a `CronnerJobExecutions` table (added in 0.0.5 — generate a migration if you upgrade
-from before that); the Redis and in-memory stores need no schema step.
+it starts and finalizes it to `Succeeded` / `Failed` / `Cancelled` when it ends; older entries are pruned to
+the per-task cap. `GetExecutionsAsync(taskId, limit)` returns them newest first. Each entry carries the
+start/finish times, `Duration` (computed `FinishedAt - StartedAt`), status, attempt, error, the owning
+scheduler instance (`Owner` — "which node ran this"), and its `Id` — the run's `ExecutionId` (see the hooks
+section). A retry is a **new** execution with a new `Id` and the next `Attempt`. The EF Core store persists
+history in a `CronnerJobExecutions` table (added in 0.0.5 — generate a migration if you upgrade from before
+that); the Redis and in-memory stores need no schema step. The full model, lifecycle, and store extensibility
+are documented in **[docs/execution-history.md](docs/execution-history.md)**.
+
+**Keep application data in your own store.** Execution history records *an execution*, not a general log or a
+place for business data. To attach your own per-run data (a summary, a log-file reference), keep it in your
+own store keyed by the run's `ExecutionId` — the same id the job and every hook of the run see:
+
+```csharp
+myRunStore.Save(ctx.ExecutionId, new MySummary(...));   // your store, correlated by the execution id
+```
+
+> The older `ctx.SetExecutionData(...)` / `TryGetExecutionData<T>()` and the execution record's `Data` slot
+> are **deprecated** (they still work) and will be removed in a future release — migrate to the pattern above.
+> The `DotnetCronner.Sample.WebApi` sample shows it: a `RunSummaryStore` behind `GET /runs`.
 
 **Self-consistent history, even after a crash.** A run whose owner dies mid-flight cannot finalize its own
 row. The scheduler closes such orphans the next time the task runs: once it holds the task's lock, any
