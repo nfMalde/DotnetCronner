@@ -134,15 +134,18 @@ public abstract class StoreLockContractTests : IAsyncLifetime
         var b = Backend.CreateStore();
         await a.UpsertAsync(NewJob("held", DateTimeOffset.UtcNow.AddSeconds(-1)));
 
-        // A claims with a short lease.
-        var claimed = await a.AcquireDueAsync(DateTimeOffset.UtcNow, "A", TimeSpan.FromMilliseconds(400), max: 10);
+        // A claims with a deliberately short lease. It must comfortably outlast the gap to the "still live"
+        // assertion below even on a loaded CI runner (the file-backed store does real disk I/O), so it is
+        // seconds, not milliseconds — a sub-second lease can lapse between these two statements and flake.
+        var lease = TimeSpan.FromSeconds(3);
+        var claimed = await a.AcquireDueAsync(DateTimeOffset.UtcNow, "A", lease, max: 10);
         claimed.ShouldHaveSingleItem().Id.ShouldBe("held");
 
         // While the lease is live B gets nothing …
         (await b.AcquireDueAsync(DateTimeOffset.UtcNow, "B", Ttl, max: 10)).ShouldBeEmpty();
 
-        // … once it lapses (A stopped renewing: a crash) B reclaims it.
-        await Task.Delay(700);
+        // … once it lapses (A stopped renewing: a crash) B reclaims it. Wait longer than the lease.
+        await Task.Delay(lease + TimeSpan.FromSeconds(1));
         var reclaimed = await b.AcquireDueAsync(DateTimeOffset.UtcNow, "B", Ttl, max: 10);
         reclaimed.ShouldHaveSingleItem().LockOwner.ShouldBe("B");
 
