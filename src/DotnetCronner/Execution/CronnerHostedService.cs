@@ -823,7 +823,12 @@ public sealed class CronnerHostedService : BackgroundService
                 return HeartbeatOutcome.LockLost;
             }
 
-            delay = retry;
+            // Aim at an ABSOLUTE point, not a stack of relative delays: a sleep that fires late must not push the
+            // next one out too, or the accumulated drift eats the margin that keeps the abandon ahead of the
+            // lease. The latest useful moment to decide is one retry before the expiry, so never sleep past it.
+            var safetyPoint = confirmedUntil - retry;
+            var remaining = safetyPoint - DateTimeOffset.UtcNow;
+            delay = remaining <= TimeSpan.Zero ? TimeSpan.Zero : Min(retry, remaining);
         }
     }
 

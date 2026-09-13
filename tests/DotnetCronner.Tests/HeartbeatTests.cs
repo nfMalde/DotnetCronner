@@ -122,6 +122,11 @@ public class HeartbeatTests
             // … but before the expiry the store last confirmed, so no other instance can overlap with it. (Asserted
             // against the lease the store actually handed out, not a guessed number.)
             cancelled.ShouldBeLessThan(store.ConfirmedUntil!.Value, "the run must stop before the confirmed lease can lapse");
+            // …and with real margin: the loop aims at an absolute safety point (one retry before the expiry), so
+            // drift on one sleep cannot accumulate across retries and scrape the lease. A margin near zero means
+            // the retries have gone back to stacking relative delays.
+            (store.ConfirmedUntil!.Value - cancelled).ShouldBeGreaterThan(
+                TimeSpan.FromMilliseconds(500), "the abandon must land at the safety point, not scrape the expiry");
             lost.ExecutionId.ShouldNotBeNullOrEmpty();
             probe.Successes.ShouldBe(0);
 

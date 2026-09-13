@@ -582,7 +582,7 @@ Cron mistakes are caught as early as possible:
 
 The analyzer ships inside the `DotnetCronner` package, so no extra reference is needed.
 
-## Limitations and roadmap
+## Limitations
 
 **DotnetCronner is pre-1.0.** Expect a few more `0.0.x` releases and one or more previews before a stable
 `1.0.0`. While on `0.x`, the public API may still change between releases as it settles and more extension
