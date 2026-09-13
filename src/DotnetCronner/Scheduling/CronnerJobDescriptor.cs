@@ -20,6 +20,7 @@ public sealed class CronnerJobDescriptor
         CronnerTaskPriority priority = CronnerTaskPriority.Normal,
         CronnerConcurrencyMode concurrency = CronnerConcurrencyMode.DropAndForget,
         string? description = null,
+        MisfirePolicy misfirePolicy = MisfirePolicy.Default,
         IReadOnlyList<ICronnerTaskHook>? hooks = null)
     {
         Id = id;
@@ -31,6 +32,7 @@ public sealed class CronnerJobDescriptor
         Priority = priority;
         Concurrency = concurrency;
         Description = description;
+        MisfirePolicy = misfirePolicy;
         Hooks = hooks ?? [];
     }
 
@@ -60,6 +62,12 @@ public sealed class CronnerJobDescriptor
 
     /// <summary>A human-readable description of the task, if provided.</summary>
     public string? Description { get; }
+
+    /// <summary>
+    /// What to do about occurrences missed while the scheduler was unavailable. <see cref="MisfirePolicy.Default"/>
+    /// means inherit <see cref="CronnerOptions.DefaultMisfirePolicy"/>.
+    /// </summary>
+    public MisfirePolicy MisfirePolicy { get; }
 
     /// <summary>Hooks attached to this specific schedule (in addition to any global hooks).</summary>
     public IReadOnlyList<ICronnerTaskHook> Hooks { get; }

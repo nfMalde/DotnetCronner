@@ -112,6 +112,9 @@ Configure via `AddDotnetCronner(c => c.Configure(o => ...))` or `app.UseDotnetCr
 | `ExecutionHistoryRetentionCount` | 0 (off) | Record per-run execution history, keeping the newest N runs per task (also via `WithExecutionHistory(N)`). Read with `ICronnerClient.GetExecutionsAsync(...)` |
 | `HookScope` | `Shared` | Default scope for terminal hooks: `Shared` (the job's scope) or `Isolated` (own fresh scope). Override per hook via `AddHook`/`WithHook` |
 | `OnInvalidSchedule` | `MarkFailed` | A cron that parses but never fires: `MarkFailed` (mark that task Failed, keep the rest) or `Throw` (fail host startup) |
+| `DefaultMisfirePolicy` | `FireOnce` | Default handling of occurrences missed while the scheduler was down: `FireOnce` / `Skip` / `FireAll` / `FireNext`. Override per task (`[CronnerTask]` or `WithMisfirePolicy(...)`) |
+| `MisfireThreshold` | 60s | How late an occurrence may be before it's treated as a misfire (rather than a slightly-late normal fire) |
+| `MisfireCatchUpMax` | 100 | Cap on how many missed occurrences `FireAll` catches up after an outage (older ones dropped with a warning) |
 | `DefaultMaxRetries` / `RetryDelay` | 0 / 0 | Automatic retry on failure |
 | `ScanEntryAssembly` | true | Scan the entry assembly for `[CronnerTask]` methods |
 
@@ -221,6 +224,29 @@ Set per task with `.WithConcurrency(...)` or the attribute's `Concurrency` prope
 - `DropAndForget` (default) — skip an occurrence that fires while a previous run is still executing.
 - `Queue` — run the missed occurrence immediately after the current one finishes (never overlapping).
 - `Concurrent` — allow overlapping runs.
+
+Concurrency governs overlap **while a run is executing**. Occurrences missed **while the scheduler was down**
+are a separate concern — see Misfire handling.
+
+### Misfire handling
+
+A *misfire* is an occurrence that should have run but didn't because the scheduler was unavailable (down, or
+paused past it). Choose what to do with the backlog per task — `WithMisfirePolicy(...)` or the attribute's
+`MisfirePolicy` — or globally via `DefaultMisfirePolicy`:
+
+- `FireOnce` (default) — run one catch-up, then resume at the next future occurrence.
+- `Skip` / `FireNext` — run none of the missed occurrences; resume at the next future occurrence.
+- `FireAll` — run every missed occurrence in order, bounded by `MisfireCatchUpMax` (older ones dropped).
+
+```csharp
+cronner.Sched<ReindexJob>(x => x.Run(x.HasParam<CancellationToken>()),
+    o => o.WithCron("*/5 * * * *").WithMisfirePolicy(MisfirePolicy.FireAll));
+```
+
+An occurrence is a misfire only once it is later than `MisfireThreshold` (default 60s). `FireAll` drains its
+backlog sequentially under `DropAndForget`/`Queue`; under `Concurrent` a misfire is always a single catch-up
+(the schedule advances up front). Full details and the task-lifecycle model are in
+**[docs/scheduler-semantics.md](docs/scheduler-semantics.md)**.
 
 ### Dependency injection and scopes
 

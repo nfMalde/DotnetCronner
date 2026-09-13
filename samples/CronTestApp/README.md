@@ -69,6 +69,7 @@ docker compose up -d --force-recreate crontestapp
 | `CRONNER_EXEC_HISTORY` | `0` (off), e.g. `20` | `WithExecutionHistory(N)` — record execution history; see `GET /tasks/{id}/history` |
 | `CRONNER_HOOK_SCOPE` | `shared` (default), `isolated` | `CronnerOptions.HookScope` — default DI scope for terminal hooks |
 | `CRONNER_INVALID_SCHEDULE` | `mark-failed` (default), `throw` | `CronnerOptions.OnInvalidSchedule` — a never-firing cron marks the task Failed vs. fails startup |
+| `CRONNER_DEFAULT_MISFIRE` | `fire-once` (default), `skip`, `fire-all`, `fire-next` | `CronnerOptions.DefaultMisfirePolicy` — how missed occurrences (downtime backlog) are handled; `lambda:import` overrides it to `FireAll` |
 | `CRONNER_MAX_RETRIES` / `CRONNER_RETRY_DELAY_SECONDS` | e.g. `2` / `5` | `DefaultMaxRetries` / `RetryDelay` |
 | `CRONNER_SLOW_KEEPALIVE_MS` | `0` (off), e.g. `15000` | makes the global `OnKeepAlive` hook block — proves a slow hook cannot stretch the renewal cadence |
 | `CRONNER_REDIS`, `CRONNER_REDIS_KEY_PREFIX`, `CRONNER_REDIS_CACHE_TTL_SECONDS` | | Redis store & cache options |
@@ -174,7 +175,7 @@ tasks are registered in `Configuration/CronnerSetup.cs`.
 | `lambda:hello` | `*/10 * * * * *` | literal arguments + `WithId` / `WithPrio` / `WithConcurrency` |
 | `lambda:service` | `*/25 * * * * *` | `HasParam<IGreeter>()`, `HasParam<ScopeMarker>()` (a new scope id each run) |
 | `lambda:tenant` | `*/35 * * * * *` | the factory overload `HasParam<Tenant>(sp => …)` |
-| `lambda:import` | `*/15 * * * * *` | an **async** target — the returned `Task` is awaited |
+| `lambda:import` | `*/15 * * * * *` | an **async** target — the returned `Task` is awaited; `Queue` + `WithMisfirePolicy(FireAll)` (drains its backlog after downtime) |
 | `progress:reindex` | `*/45 * * * * *` | `HasParam<ICronnerJobContext>()` + **every per-schedule hook style**; sends a per-step progress payload the delegate hook logs |
 | `CronTestApp.Jobs.LambdaJobs.SayHello` | `0 * * * *` | the short `Sched(expr, "cron")` overload |
 | `lambda:manual` | *(none)* | a lambda task with no cron → manual only |

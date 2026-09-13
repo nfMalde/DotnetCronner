@@ -131,6 +131,9 @@ public sealed class TestAppOptions
     /// <summary>What to do about a cron that parses but never fires: mark the task Failed, or throw at startup.</summary>
     public CronnerInvalidScheduleBehavior OnInvalidSchedule { get; init; }
 
+    /// <summary>Default handling of occurrences missed while the scheduler was down (misfire).</summary>
+    public MisfirePolicy DefaultMisfire { get; init; }
+
     /// <summary>Pins the keepalive / <c>OnKeepAlive</c> cadence, or <c>null</c> to use the default <c>LockTtl</c>/2.</summary>
     public TimeSpan? KeepAliveInterval { get; init; }
 
@@ -202,6 +205,13 @@ public sealed class TestAppOptions
             ["mark-failed"] = CronnerInvalidScheduleBehavior.MarkFailed,
             ["throw"] = CronnerInvalidScheduleBehavior.Throw,
         }),
+        DefaultMisfire = ReadEnum(configuration, "CRONNER_DEFAULT_MISFIRE", MisfirePolicy.FireOnce, new Dictionary<string, MisfirePolicy>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["fire-once"] = MisfirePolicy.FireOnce,
+            ["skip"] = MisfirePolicy.Skip,
+            ["fire-all"] = MisfirePolicy.FireAll,
+            ["fire-next"] = MisfirePolicy.FireNext,
+        }),
         KeepAliveInterval = ReadInt(configuration, "CRONNER_KEEPALIVE_SECONDS", 0) is var kai && kai > 0
             ? TimeSpan.FromSeconds(kai)
             : null,
@@ -226,6 +236,7 @@ public sealed class TestAppOptions
         executionHistory = ExecutionHistory == 0 ? "off" : $"keep newest {ExecutionHistory} per task",
         hookScope = HookScope.ToString(),
         onInvalidSchedule = OnInvalidSchedule.ToString(),
+        defaultMisfire = DefaultMisfire.ToString(),
         slowKeepAliveHook = SlowKeepAliveDelay > TimeSpan.Zero ? SlowKeepAliveDelay.ToString() : "off",
         redisConnection = UsesRedis ? RedisConnection : null,
         redisKeyPrefix = UsesRedis ? RedisKeyPrefix : null,

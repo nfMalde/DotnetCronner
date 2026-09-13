@@ -147,7 +147,8 @@ internal sealed class CronnerBuilder : ICronnerBuilder
 
         _registry.Add(new CronnerJobDescriptor(
             id, CronnerJobNaming.GetName(method), scheduleOptions.CronString, jobType, method, arguments,
-            scheduleOptions.Priority, scheduleOptions.Concurrency, scheduleOptions.Description, scheduleOptions.Hooks));
+            scheduleOptions.Priority, scheduleOptions.Concurrency, scheduleOptions.Description,
+            scheduleOptions.MisfirePolicy, scheduleOptions.Hooks));
         return this;
     }
 

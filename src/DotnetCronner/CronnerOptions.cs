@@ -76,6 +76,26 @@ public sealed class CronnerOptions
     /// </summary>
     public CronnerInvalidScheduleBehavior OnInvalidSchedule { get; set; } = CronnerInvalidScheduleBehavior.MarkFailed;
 
+    /// <summary>
+    /// The default <see cref="MisfirePolicy"/> for tasks that do not set their own — what to do about
+    /// occurrences missed while the scheduler was unavailable. Defaults to <see cref="MisfirePolicy.FireOnce"/>
+    /// (run one catch-up, then resume). Must be a concrete policy, not <see cref="MisfirePolicy.Default"/>.
+    /// </summary>
+    public MisfirePolicy DefaultMisfirePolicy { get; set; } = MisfirePolicy.FireOnce;
+
+    /// <summary>
+    /// How late a scheduled occurrence may be before it is treated as a <em>misfire</em> (governed by the
+    /// <see cref="MisfirePolicy"/>) rather than a normal, slightly-late run. Defaults to 60 seconds.
+    /// </summary>
+    public TimeSpan MisfireThreshold { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// The most missed occurrences <see cref="MisfirePolicy.FireAll"/> will catch up after an outage; older
+    /// occurrences beyond this are dropped (with a warning) so a long downtime can't flood the scheduler.
+    /// Defaults to 100. <c>0</c> or less means no cap (catch up everything).
+    /// </summary>
+    public int MisfireCatchUpMax { get; set; } = 100;
+
     /// <summary>Number of automatic retries after a failed execution. Defaults to 0 (no retry).</summary>
     public int DefaultMaxRetries { get; set; }
 
