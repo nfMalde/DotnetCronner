@@ -24,6 +24,12 @@ public interface ICronnerScheduleOptions
     ICronnerScheduleOptions WithDescription(string description);
 
     /// <summary>
+    /// Sets what to do about occurrences missed while the scheduler was unavailable. Defaults to
+    /// <see cref="MisfirePolicy.Default"/> (inherit <see cref="CronnerOptions.DefaultMisfirePolicy"/>).
+    /// </summary>
+    ICronnerScheduleOptions WithMisfirePolicy(MisfirePolicy policy);
+
+    /// <summary>
     /// Attaches a hook instance to this schedule only. Pass <paramref name="scope"/> to override
     /// <see cref="CronnerOptions.HookScope"/> for this hook's terminal events; <c>null</c> inherits the default.
     /// </summary>
@@ -159,6 +165,8 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
 
     public string? Description { get; private set; }
 
+    public MisfirePolicy MisfirePolicy { get; private set; } = MisfirePolicy.Default;
+
     public IReadOnlyList<ICronnerTaskHook> Hooks => _hooks;
 
     public ICronnerScheduleOptions WithCron(string cronString)
@@ -188,6 +196,12 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
     public ICronnerScheduleOptions WithDescription(string description)
     {
         Description = description;
+        return this;
+    }
+
+    public ICronnerScheduleOptions WithMisfirePolicy(MisfirePolicy policy)
+    {
+        MisfirePolicy = policy;
         return this;
     }
 

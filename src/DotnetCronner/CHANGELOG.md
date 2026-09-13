@@ -6,6 +6,31 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-09-13
+
+Scheduler semantics & misfire handling (roadmap 0.0.9): the task lifecycle and every scheduling behavior are
+now documented in [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md), and missed occurrences are
+handled by an explicit, per-task policy.
+
+### Added
+- **Misfire handling.** An occurrence missed while the scheduler was unavailable (late beyond
+  `CronnerOptions.MisfireThreshold`, default 60s) is handled by a `MisfirePolicy`, set per task via
+  `WithMisfirePolicy(...)` / the `[CronnerTask]` attribute, or globally via `CronnerOptions.DefaultMisfirePolicy`
+  (default `FireOnce`):
+  - `FireOnce` — one catch-up, then resume at the next future occurrence.
+  - `Skip` / `FireNext` — run none of the missed occurrences; resume at the next future occurrence.
+  - `FireAll` — run every missed occurrence in order, bounded by `CronnerOptions.MisfireCatchUpMax` (default
+    100; older occurrences dropped with a warning).
+- `CronnerOptions.DefaultMisfirePolicy`, `MisfireThreshold`, `MisfireCatchUpMax`.
+
+### Changed
+- Misfire handling is now **decoupled from concurrency**: `CronnerConcurrencyMode` governs overlap while a run
+  is executing; `MisfirePolicy` governs the backlog after downtime. Previously a `Queue` task auto-caught-up a
+  downtime backlog implicitly — that is now governed by `MisfirePolicy` (default `FireOnce`), so **a `Queue`
+  task that should drain its backlog after an outage must set `MisfirePolicy.FireAll`**. On-time `Queue`
+  behavior (running an occurrence that came due during a run) is unchanged. Under `Concurrent`, a misfire is
+  always a single catch-up (the schedule advances up front).
+
 ## [0.0.8] - 2026-08-28
 
 Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and

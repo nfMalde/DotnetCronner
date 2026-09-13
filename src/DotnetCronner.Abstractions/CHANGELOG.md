@@ -6,6 +6,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-09-13
+
+Scheduler semantics & misfire handling (roadmap 0.0.9). See [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md).
+
+### Added
+- `MisfirePolicy` (`Default` / `FireOnce` / `Skip` / `FireAll` / `FireNext`) — what to do about occurrences a
+  task missed while the scheduler was unavailable; independent of `CronnerConcurrencyMode`.
+- `CronnerTaskAttribute.MisfirePolicy` so attribute tasks can choose a policy (defaults to `Default` = inherit
+  the global default).
+
 ## [0.0.8] - 2026-08-28
 
 Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and

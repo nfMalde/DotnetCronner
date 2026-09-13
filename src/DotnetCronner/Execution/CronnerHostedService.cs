@@ -376,6 +376,42 @@ public sealed class CronnerHostedService : BackgroundService
 
             var dueTime = job.NextRunUtc ?? DateTimeOffset.UtcNow;
 
+            // Misfire handling: an occurrence later than MisfireThreshold was missed while the scheduler was
+            // unavailable. The MisfirePolicy governs that backlog; concurrency (below) still governs in-flight
+            // overlap. (Concurrent mode advances the schedule up front, so a misfire there is always one catch-up.)
+            var misfired = descriptor.CronString is not null &&
+                DateTimeOffset.UtcNow - dueTime > _options.MisfireThreshold;
+            var misfirePolicy = ResolveMisfirePolicy(descriptor);
+
+            if (misfired && misfirePolicy is MisfirePolicy.Skip or MisfirePolicy.FireNext)
+            {
+                // Skip / FireNext: run none of the missed occurrences; resume at the next future occurrence.
+                _logger.LogInformation(
+                    "DotnetCronner task {TaskId} misfired (its occurrence was due {Late} ago); skipping the missed work per {Policy} and resuming at the next scheduled time.",
+                    job.Id, DateTimeOffset.UtcNow - dueTime, misfirePolicy);
+                job.NextRunUtc = _calculator.GetNextOccurrence(descriptor.CronString, DateTimeOffset.UtcNow, _options.TimeZone);
+                job.State = job.NextRunUtc is not null ? CronnerTaskState.Scheduled : CronnerTaskState.Idle;
+                ReleaseLock(job);
+                await SafeUpsertAsync(job, stoppingToken).ConfigureAwait(false);
+                await SafeReleaseLockAsync(job.Id, stoppingToken).ConfigureAwait(false);
+                await FireLockHookAsync(CronnerHookEvent.LockRelease, descriptor, job, stoppingToken, runState).ConfigureAwait(false);
+                return;
+            }
+
+            // FireAll with a backlog larger than the cap: drop the oldest, catch up only the most recent ones.
+            if (misfired && misfirePolicy == MisfirePolicy.FireAll && _options.MisfireCatchUpMax > 0)
+            {
+                var (missedCount, clampFrom) = _calculator.CountMissed(
+                    descriptor.CronString, dueTime, DateTimeOffset.UtcNow, _options.TimeZone, _options.MisfireCatchUpMax);
+                if (clampFrom is { } clamp)
+                {
+                    _logger.LogWarning(
+                        "DotnetCronner task {TaskId} misfired with {Missed} missed occurrences; FireAll catches up the most recent {Cap} and drops the older {Dropped}.",
+                        job.Id, missedCount, _options.MisfireCatchUpMax, missedCount - _options.MisfireCatchUpMax);
+                    dueTime = clamp;   // run from the cap-th most recent; the walk catches up the rest
+                }
+            }
+
             // In concurrent mode, advance the schedule up front so the next occurrence can run in parallel.
             if (concurrent)
             {
@@ -837,6 +873,16 @@ public sealed class CronnerHostedService : BackgroundService
         await SafeUpsertAsync(latest, cancellationToken).ConfigureAwait(false);
     }
 
+    // Resolves a task's effective misfire policy: its own, or the options default when it inherits
+    // (MisfirePolicy.Default). Guards against the options default itself being left at Default.
+    private MisfirePolicy ResolveMisfirePolicy(CronnerJobDescriptor descriptor)
+    {
+        var policy = descriptor.MisfirePolicy;
+        if (policy == MisfirePolicy.Default)
+            policy = _options.DefaultMisfirePolicy;
+        return policy == MisfirePolicy.Default ? MisfirePolicy.FireOnce : policy;
+    }
+
     private void ApplyOutcome(
         CronnerJob job, CronnerJobDescriptor descriptor, bool cancelledByClient, Exception? failure, DateTimeOffset dueTime)
     {
@@ -849,9 +895,14 @@ public sealed class CronnerHostedService : BackgroundService
             return;
         }
 
-        // Queue mode catches up missed occurrences by scheduling from the consumed due time; the default
-        // (DropAndForget) skips ahead to the next occurrence after now.
-        var scheduleFrom = descriptor.Concurrency == CronnerConcurrencyMode.Queue ? dueTime : now;
+        // An on-time run reschedules per concurrency (Queue runs an occurrence that came due during the run);
+        // a run that MISFIRED (its occurrence was late beyond the threshold) reschedules per the misfire policy —
+        // FireAll walks the backlog from the due time, the others jump to the next future occurrence.
+        var misfired = descriptor.CronString is not null && now - dueTime > _options.MisfireThreshold;
+        var catchUp = misfired
+            ? ResolveMisfirePolicy(descriptor) == MisfirePolicy.FireAll
+            : descriptor.Concurrency == CronnerConcurrencyMode.Queue;
+        var scheduleFrom = catchUp ? dueTime : now;
         var oneOff = job.Kind == CronnerJobKind.OneOff;
 
         if (failure is not null)

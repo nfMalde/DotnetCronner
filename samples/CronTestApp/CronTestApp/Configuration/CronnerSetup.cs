@@ -48,6 +48,7 @@ public static class CronnerSetup
                 cronnerOptions.ExecutionHistoryRetentionCount = options.ExecutionHistory;
                 cronnerOptions.HookScope = options.HookScope;
                 cronnerOptions.OnInvalidSchedule = options.OnInvalidSchedule;
+                cronnerOptions.DefaultMisfirePolicy = options.DefaultMisfire;
                 cronnerOptions.DefaultMaxRetries = options.MaxRetries;
                 cronnerOptions.RetryDelay = options.RetryDelay;
             });
@@ -191,7 +192,10 @@ public static class CronnerSetup
                 schedule => schedule
                     .WithCron("*/15 * * * * *")
                     .WithId("lambda:import")
-                    .WithConcurrency(CronnerConcurrencyMode.Queue))
+                    .WithConcurrency(CronnerConcurrencyMode.Queue)
+                    // Queue + FireAll: after downtime this task drains its whole backlog in order (see
+                    // docs/scheduler-semantics.md), overriding the global CRONNER_DEFAULT_MISFIRE.
+                    .WithMisfirePolicy(MisfirePolicy.FireAll))
 
             // ── Per-schedule hooks: every hook style, attached to this one task and no other. ──────
             .Sched<ProgressJobs>(

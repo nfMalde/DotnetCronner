@@ -52,4 +52,10 @@ public sealed class CronnerTaskAttribute : Attribute
 
     /// <summary>An optional human-readable description, surfaced on <c>CronnerJobDescriptor</c> and admin listings.</summary>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// What to do about occurrences missed while the scheduler was unavailable. Defaults to
+    /// <see cref="MisfirePolicy.Default"/> — inherit <c>CronnerOptions.DefaultMisfirePolicy</c>.
+    /// </summary>
+    public MisfirePolicy MisfirePolicy { get; set; } = MisfirePolicy.Default;
 }
