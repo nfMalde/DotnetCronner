@@ -9,7 +9,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 ## [0.0.9] - 2026-09-13
 
 Released with the suite at 0.0.9 (depends on `DotnetCronner.Abstractions >= 0.0.9` and `DotnetCronner >= 0.0.9`).
-No store code changes — misfire handling (roadmap 0.0.9) is entirely in the scheduler engine; the Redis data
+No store code changes — misfire handling is entirely in the scheduler engine; the Redis data
 format is unchanged.
 
 ## [0.0.8] - 2026-08-28
@@ -18,7 +18,7 @@ Released with the suite at 0.0.8 (depends on `DotnetCronner.Abstractions >= 0.0.
 `DotnetCronner >= 0.0.8`). No store code changes.
 
 ### Changed
-- Downstream of the abstraction refinement (roadmap 0.0.8): a persisted execution now serializes the new
+- Downstream of the abstraction refinement: a persisted execution now serializes the new
   computed `CronnerJobExecution.Duration`, and the `Data` slot it may carry is **deprecated** (still read and
   written). No data-format break — older keys are read as before, and `Duration` is derived from the
   timestamps on read. See [docs/execution-history.md](../../docs/execution-history.md).

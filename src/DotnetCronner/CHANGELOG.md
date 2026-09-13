@@ -8,7 +8,7 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [0.0.9] - 2026-09-13
 
-Scheduler semantics & misfire handling (roadmap 0.0.9): the task lifecycle and every scheduling behavior are
+Scheduler semantics & misfire handling: the task lifecycle and every scheduling behavior are
 now documented in [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md), and missed occurrences are
 handled by an explicit, per-task policy.
 
@@ -31,9 +31,17 @@ handled by an explicit, per-task policy.
   behavior (running an occurrence that came due during a run) is unchanged. Under `Concurrent`, a misfire is
   always a single catch-up (the schedule advances up front).
 
+### Fixed
+- **The lease margin no longer erodes under timer drift.** While a renewal could not be confirmed, the
+  heartbeat retried on a *relative* delay, so every `Task.Delay` that fired late pushed the next one out as
+  well. On a loaded host that accumulated drift could consume the entire margin and abandon the run *at* (or
+  just after) the confirmed expiry rather than before it — the one window in which a reclaiming instance could
+  overlap it. The retry now targets an absolute safety point derived from the confirmed expiry (one retry
+  interval ahead of it) and never sleeps past it, so drift on a single sleep cannot accumulate across retries.
+
 ## [0.0.8] - 2026-08-28
 
-Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and
+Execution history & abstraction refinement: the execution-history model is now explicit and
 documented — see [docs/execution-history.md](../../docs/execution-history.md).
 
 ### Deprecated

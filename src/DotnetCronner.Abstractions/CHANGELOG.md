@@ -8,7 +8,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [0.0.9] - 2026-09-13
 
-Scheduler semantics & misfire handling (roadmap 0.0.9). See [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md).
+Scheduler semantics & misfire handling. See [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md).
 
 ### Added
 - `MisfirePolicy` (`Default` / `FireOnce` / `Skip` / `FireAll` / `FireNext`) — what to do about occurrences a
@@ -18,7 +18,7 @@ Scheduler semantics & misfire handling (roadmap 0.0.9). See [docs/scheduler-sema
 
 ## [0.0.8] - 2026-08-28
 
-Execution history & abstraction refinement (roadmap 0.0.8): the execution-history model is now explicit and
+Execution history & abstraction refinement: the execution-history model is now explicit and
 documented — see [docs/execution-history.md](../../docs/execution-history.md).
 
 ### Added
