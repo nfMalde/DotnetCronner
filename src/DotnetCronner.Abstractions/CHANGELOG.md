@@ -6,6 +6,24 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-20
+
+Released with the suite at 0.1.0. Carries the retry-policy model the scheduler now runs on —
+see [docs/retries.md](../../docs/retries.md).
+
+### Added
+- `CronnerRetryPolicy` — how many attempts a failing task gets (`MaxAttempts`, counting the first run), the
+  wait between them, the `MaxDelay` ceiling on exponential growth, and whether jitter spreads it. Includes
+  `Immediate` / `FixedDelay` / `ExponentialBackoff` factories, `AllowsRetry(attempt)` and `GetDelay(attempt)`.
+- `CronnerRetryStrategy` — `Default` (inherit), `Immediate`, `Fixed`, `Exponential`. Jitter is deliberately
+  **not** a strategy: it composes with any of them.
+- Retry properties on `CronnerTaskAttribute` — `MaxAttempts`, `RetryStrategy`, `RetryDelaySeconds`,
+  `RetryMaxDelaySeconds`, `RetryJitter` — and `CronnerRetryPolicy.FromTaskAttribute(...)`, which translates
+  and validates them so a custom discovery mechanism can reuse exactly what the built-in scanner does.
+
+No breaking change: every addition is new surface, and a task that configures none of it is not retried, as
+before.
+
 ## [0.0.9] - 2026-09-13
 
 Scheduler semantics & misfire handling. See [docs/scheduler-semantics.md](../../docs/scheduler-semantics.md).

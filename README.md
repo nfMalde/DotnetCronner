@@ -115,7 +115,8 @@ Configure via `AddDotnetCronner(c => c.Configure(o => ...))` or `app.UseDotnetCr
 | `DefaultMisfirePolicy` | `FireOnce` | Default handling of occurrences missed while the scheduler was down: `FireOnce` / `Skip` / `FireAll` / `FireNext`. Override per task (`[CronnerTask]` or `WithMisfirePolicy(...)`) |
 | `MisfireThreshold` | 60s | How late an occurrence may be before it's treated as a misfire (rather than a slightly-late normal fire) |
 | `MisfireCatchUpMax` | 100 | Cap on how many missed occurrences `FireAll` catches up after an outage (older ones dropped with a warning) |
-| `DefaultMaxRetries` / `RetryDelay` | 0 / 0 | Automatic retry on failure |
+| `DefaultRetryPolicy` | `null` | Default retry policy for tasks without one: how many attempts a failing task gets and how long to wait between them (also via `WithRetryPolicy(...)`). Override per task (`[CronnerTask]` or `WithRetryPolicy(...)`) |
+| `DefaultMaxRetries` / `RetryDelay` | 0 / 0 | Shorthand for a fixed-delay retry policy, used while `DefaultRetryPolicy` is unset. Counts **retries**, so 2 here is 3 total attempts |
 | `ScanEntryAssembly` | true | Scan the entry assembly for `[CronnerTask]` methods |
 
 ## Usage
@@ -247,6 +248,50 @@ An occurrence is a misfire only once it is later than `MisfireThreshold` (defaul
 backlog sequentially under `DropAndForget`/`Queue`; under `Concurrent` a misfire is always a single catch-up
 (the schedule advances up front). Full details and the task-lifecycle model are in
 **[docs/scheduler-semantics.md](docs/scheduler-semantics.md)**.
+
+### Retries
+
+A *retry policy* says how many attempts a failing task gets and how long to wait between them. Set it per
+task — `WithRetryPolicy(...)` or the attribute's retry properties — or as the default for every task on the
+builder:
+
+```csharp
+cronner
+    // the default for every task
+    .WithRetryPolicy(p => p.MaxAttempts(3).FixedDelay(TimeSpan.FromSeconds(30)))
+    // ... and a different one for this task
+    .Sched<ReportJobs>(x => x.SendAsync(x.HasParam<CancellationToken>()), o => o
+        .WithCron("0 * * * *")
+        .WithRetryPolicy(p => p
+            .MaxAttempts(5)
+            .ExponentialBackoff(TimeSpan.FromSeconds(5))
+            .WithJitter()));
+```
+
+`MaxAttempts` counts **total attempts including the first run** — `MaxAttempts(5)` is one run plus four
+retries, and the default of one attempt means no retry at all. The strategies are `Immediate`, `FixedDelay`
+and `ExponentialBackoff` (doubling, capped by `MaxDelay`, default one hour); `WithJitter()` is a modifier
+that composes with any of them, spreading the wait over `[delay/2, delay]` so tasks that fail together
+don't all retry at the same instant.
+
+Attribute tasks express the same thing as properties (an attribute can't carry a lambda or a `TimeSpan`):
+
+```csharp
+[CronnerTask(cronstring: "0 * * * *",
+    MaxAttempts = 5, RetryStrategy = CronnerRetryStrategy.Exponential, RetryDelaySeconds = 5, RetryJitter = true)]
+public Task SendAsync(IReportService reports, CancellationToken ct) => reports.SendAsync(ct);
+```
+
+Each attempt is its own execution (own `ExecutionId`, `Attempt` + 1) and is never confused with a fresh cron
+occurrence: while attempts remain the task is rescheduled at the retry delay, and the cron schedule resumes
+only once an attempt succeeds or the attempts run out. The job body reads `ctx.Attempt`, `ctx.MaxAttempts`
+and `ctx.PreviousError` from `ICronnerJobContext`; hooks additionally see `ctx.WillRetry` and
+`ctx.RetryDelay`. Full details are in **[docs/retries.md](docs/retries.md)**.
+
+`DefaultMaxRetries` / `RetryDelay` still work as the shorthand when no policy is set anywhere — mind the
+off-by-one: those count *retries*, `MaxAttempts` counts *attempts*. One task kind is not retried at all:
+a `Concurrent` task advances its schedule up front and only records the outcome, so its hooks report
+`MaxAttempts` 1 and `WillRetry` `false`.
 
 ### Dependency injection and scopes
 
@@ -380,9 +425,10 @@ and the terminal hooks — including `OnFail` — regardless of hook scope. (`On
 it can't see values the job sets.) This is the clean way to build a teardown/notification summary as pure
 data: the job materializes it, the hook just reads it — no need to keep the job's session alive.
 
-> Retries and `OnFail`: with `DefaultMaxRetries > 0`, `OnFail` fires on **each** failed attempt (not once
-> after retries are exhausted). Check `ctx.WillRetry` — it's `true` while attempts remain and `false` on the
-> final failure — to alert only once per incident.
+> Retries and `OnFail`: when a retry policy allows more than one attempt, `OnFail` fires on **each** failed
+> attempt (not once after retries are exhausted). Check `ctx.WillRetry` — it's `true` while attempts remain
+> and `false` on the final failure — to alert only once per incident; `ctx.Attempt` / `ctx.MaxAttempts` say
+> which attempt this was, and `ctx.RetryDelay` how long the wait before the next one is.
 
 For database work inside a hook, resolve your own scoped unit-of-work that way — **don't call
 `ICronnerStore` from a hook.** It has no per-hook session, and creating the scope alone opens no
@@ -521,9 +567,10 @@ deployment another node may legitimately be running the task right then).
 
 ### Execution semantics
 
-- **`OnFail` fires per attempt, not per run.** With `DefaultMaxRetries > 0` each failed attempt fires it;
-  use `ctx.WillRetry` to act only on the final failure. Each attempt is its own execution (own
-  `ExecutionId`, `Attempt` + 1 on the history row).
+- **`OnFail` fires per attempt, not per run.** Under a retry policy with more than one attempt, each failed
+  attempt fires it; use `ctx.WillRetry` to act only on the final failure. Each attempt is its own execution
+  (own `ExecutionId`, `Attempt` + 1 on the history row), and a retry is never treated as a new cron
+  occurrence or as a misfire — see [retries](#retries).
 - **One run per task across processes** is enforced by the store's execution lock: while one instance holds
   a task's claim, no other instance can claim it. The claim is an atomic, owner-conditional write on the
   store (a conditional `UPDATE` that re-asserts eligibility in EF Core, `SET NX` on a per-task key in Redis);
@@ -579,12 +626,15 @@ Cron mistakes are caught as early as possible:
   - `DC0002` (warning): two `[CronnerTask]` attributes sharing the same explicit id.
 - At registration, invalid cron strings — from attributes or `Sched(...)` lambdas — throw immediately at
   startup, naming the offending task, rather than failing silently later.
+- Also at registration, a `[CronnerTask]` that sets retry properties without `MaxAttempts` throws, naming
+  the task: the other properties only describe *how* to retry, and a task that looks retried but never is
+  would be worse than a startup error.
 
 The analyzer ships inside the `DotnetCronner` package, so no extra reference is needed.
 
 ## Limitations
 
-**DotnetCronner is pre-1.0.** Expect a few more `0.0.x` releases and one or more previews before a stable
+**DotnetCronner is pre-1.0.** Expect a few more `0.x` releases and one or more previews before a stable
 `1.0.0`. While on `0.x`, the public API may still change between releases as it settles and more extension
 points open up, so pin your versions accordingly — `1.0.0` will follow once the surface has proven itself
 in real use.

@@ -70,7 +70,9 @@ docker compose up -d --force-recreate crontestapp
 | `CRONNER_HOOK_SCOPE` | `shared` (default), `isolated` | `CronnerOptions.HookScope` — default DI scope for terminal hooks |
 | `CRONNER_INVALID_SCHEDULE` | `mark-failed` (default), `throw` | `CronnerOptions.OnInvalidSchedule` — a never-firing cron marks the task Failed vs. fails startup |
 | `CRONNER_DEFAULT_MISFIRE` | `fire-once` (default), `skip`, `fire-all`, `fire-next` | `CronnerOptions.DefaultMisfirePolicy` — how missed occurrences (downtime backlog) are handled; `lambda:import` overrides it to `FireAll` |
-| `CRONNER_MAX_RETRIES` / `CRONNER_RETRY_DELAY_SECONDS` | e.g. `2` / `5` | `DefaultMaxRetries` / `RetryDelay` |
+| `CRONNER_MAX_RETRIES` / `CRONNER_RETRY_DELAY_SECONDS` | e.g. `2` / `5` | `DefaultMaxRetries` / `RetryDelay` — the shorthand, used while no retry policy is set |
+| `CRONNER_RETRY_STRATEGY` | *(unset)*, `immediate`, `fixed`, `exponential` | When set, builds `CronnerOptions.DefaultRetryPolicy` from it instead (`MaxAttempts = CRONNER_MAX_RETRIES + 1`, base delay `CRONNER_RETRY_DELAY_SECONDS`) |
+| `CRONNER_RETRY_JITTER` | `true` / `false` (default) | Spreads the default policy's wait over `[delay/2, delay]`. Only used with a strategy |
 | `CRONNER_SLOW_KEEPALIVE_MS` | `0` (off), e.g. `15000` | makes the global `OnKeepAlive` hook block — proves a slow hook cannot stretch the renewal cadence |
 | `CRONNER_REDIS`, `CRONNER_REDIS_KEY_PREFIX`, `CRONNER_REDIS_CACHE_TTL_SECONDS` | | Redis store & cache options |
 | `CRONNER_POSTGRES` | Npgsql connection string | EF Core stores |
@@ -167,6 +169,7 @@ tasks are registered in `Configuration/CronnerSetup.cs`.
 | `marker:filtered` | `*/20 * * * * *` | implements `IScheduledJob`, the marker used by `filtered` discovery |
 | `external:cleanup` | `*/2 * * * *` | lives in the **`CronTestApp.ExternalJobs` assembly** (`AutoDiscoverFromAssembly`) |
 | `external:marker` | `*/20 * * * * *` | external assembly **and** marker interface |
+| `retry:flaky` | `0 */2 * * * *` | a **retry policy on the attribute** (`MaxAttempts` / `RetryStrategy` / `RetryDelaySeconds` / `RetryJitter`); fails every attempt but the last, so one occurrence walks the whole ladder |
 
 ### `Sched<T>(...)` lambda tasks
 
@@ -178,6 +181,7 @@ tasks are registered in `Configuration/CronnerSetup.cs`.
 | `lambda:import` | `*/15 * * * * *` | an **async** target — the returned `Task` is awaited; `Queue` + `WithMisfirePolicy(FireAll)` (drains its backlog after downtime) |
 | `progress:reindex` | `*/45 * * * * *` | `HasParam<ICronnerJobContext>()` + **every per-schedule hook style**; sends a per-step progress payload the delegate hook logs |
 | `CronTestApp.Jobs.LambdaJobs.SayHello` | `0 * * * *` | the short `Sched(expr, "cron")` overload |
+| `retry:exhausted` | `0 */3 * * * *` | the fluent `WithRetryPolicy(p => p.MaxAttempts(2).FixedDelay(3s))`; always fails, so its attempts run out and it waits for the next occurrence |
 | `lambda:manual` | *(none)* | a lambda task with no cron → manual only |
 
 ### Hooks — all twelve events, all four registration styles
@@ -198,7 +202,8 @@ methods use `context.HasParam<T>()` to prove they resolve from the hook's own sc
 hooks show the rest: `OnSuccess` reads the run-state bag (`context.Get<ProgressJobs.ImportSummary>()`),
 **augments** it with the outcome, and records it to the app's own log keyed by `context.ExecutionId` — the
 recommended way to keep application data (execution history records an execution, not app data) — and
-`OnFail` logs `context.WillRetry`. Every `[hook]`/`[lock]` activity line carries the run's `ExecutionId`
+`OnFail` logs the attempt ladder — `context.Attempt`/`MaxAttempts`, `context.WillRetry` and
+`context.RetryDelay` — since it fires once per *attempt*, not once per run. Every `[hook]`/`[lock]` activity line carries the run's `ExecutionId`
 (first 8 chars) so one run can be followed from `OnLockAcquire` to `OnLockRelease`; the `[lock] acquired`
 line also prints `context.LockTtl` / `context.KeepAliveInterval` — the effective values, read from the
 context instead of being re-configured.
@@ -313,7 +318,7 @@ CronTestApp/
     StoreBootstrap.cs             EnsureCreated with retries while Postgres boots
   Data/AppDbContext.cs            own DbContext implementing ICronnerDbContext
   Stores/JsonFileCronnerStore.cs  hand-written ICronnerStore: full lock contract (claim/renew/release, lock-preserving upsert, orphan finalization) + per-run session + renewal-outage switch
-  Jobs/                           all attribute + lambda job classes (lock, progress, concurrency, …)
+  Jobs/                           all attribute + lambda job classes (lock, progress, concurrency, retry, …)
   Hooks/LoggingHook.cs            ICronnerTaskHook via DI — all twelve events
   Hooks/AuditHook.cs              targets for the expression + per-schedule hook styles
   Endpoints/CronnerEndpoints.cs   the ICronnerClient management surface

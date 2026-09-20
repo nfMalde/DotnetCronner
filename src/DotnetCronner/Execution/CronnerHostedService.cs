@@ -26,6 +26,10 @@ public sealed class CronnerHostedService : BackgroundService
     private readonly CronnerOptions _options;
     private readonly ILogger<CronnerHostedService> _logger;
     private readonly string _owner = Guid.NewGuid().ToString("N");
+
+    // The DefaultMaxRetries / RetryDelay shorthand as a policy. Options are fixed once the host starts, so it
+    // is built on first use and kept.
+    private CronnerRetryPolicy? _shorthandRetryPolicy;
     private IServiceProvider _jobProvider;
 
     // Claimed-or-running jobs owned by this instance. The poll loop only claims what the workers can pick up
@@ -318,6 +322,13 @@ public sealed class CronnerHostedService : BackgroundService
         // The id exists whether or not history is persisted, so consumers can always key their own records to it.
         var runState = new CronnerRunState(Guid.NewGuid().ToString("N"));
 
+        // The retry context for this attempt, resolved once so the job body (ICronnerJobContext) and every
+        // hook of the run read the same "attempt 2 of 3". RetryCount is the count of retries already spent,
+        // so the attempt number is one more than it.
+        runState.Attempt = job.RetryCount + 1;
+        runState.MaxAttempts = ResolveRetryPolicy(descriptor).MaxAttempts;
+        runState.PreviousError = job.RetryCount > 0 ? job.LastError : null;
+
         using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
         // A non-concurrent task never runs twice at once in this process: if a claim for a task that is already
@@ -379,7 +390,7 @@ public sealed class CronnerHostedService : BackgroundService
             // Misfire handling: an occurrence later than MisfireThreshold was missed while the scheduler was
             // unavailable. The MisfirePolicy governs that backlog; concurrency (below) still governs in-flight
             // overlap. (Concurrent mode advances the schedule up front, so a misfire there is always one catch-up.)
-            var misfired = descriptor.CronString is not null &&
+            var misfired = descriptor.CronString is not null && job.RetryCount == 0 &&
                 DateTimeOffset.UtcNow - dueTime > _options.MisfireThreshold;
             var misfirePolicy = ResolveMisfirePolicy(descriptor);
 
@@ -442,7 +453,7 @@ public sealed class CronnerHostedService : BackgroundService
                     JobId = job.Id,
                     StartedAt = now,
                     Status = JobExecutionStatus.Running,
-                    Attempt = job.RetryCount + 1,
+                    Attempt = runState.Attempt,
                     Owner = _owner,   // which scheduler instance ran this
                 };
                 runState.Execution = execution;
@@ -498,7 +509,7 @@ public sealed class CronnerHostedService : BackgroundService
 
             job.RunCount++;
             ReleaseLock(job);
-            ApplyOutcome(job, descriptor, cancelledByClient, failure, dueTime);
+            ApplyOutcome(job, descriptor, cancelledByClient, failure, dueTime, runState);
 
             // A cancel from another instance (ICronnerClient.CancelTaskAsync elsewhere) lands in the store as
             // State = Cancelled while we run; honour it instead of re-arming the schedule over it.
@@ -650,7 +661,7 @@ public sealed class CronnerHostedService : BackgroundService
                     progressPayload: payload);
             });
 
-            await DispatchLifecycleAsync(CronnerHookEvent.Start, sp, descriptor, job, TimeSpan.Zero, null, runState, false, stoppingToken)
+            await DispatchLifecycleAsync(CronnerHookEvent.Start, sp, descriptor, job, TimeSpan.Zero, null, runState, stoppingToken)
                 .ConfigureAwait(false);
 
             try
@@ -674,9 +685,13 @@ public sealed class CronnerHostedService : BackgroundService
             var terminal = cancelled
                 ? CronnerHookEvent.Cancel
                 : failure is not null ? CronnerHookEvent.Fail : CronnerHookEvent.Success;
-            // On failure, tell the Fail hook whether a retry is still coming (so it can hold off on alerting).
-            var willRetry = terminal == CronnerHookEvent.Fail && job.RetryCount < _options.DefaultMaxRetries;
-            await DispatchLifecycleAsync(terminal, sp, descriptor, job, stopwatch.Elapsed, failure, runState, willRetry, stoppingToken)
+            // On failure, tell the Fail hook whether a retry is still coming (so it can hold off on alerting)
+            // and how long the wait will be. The delay is drawn here, once, and reused when the job is actually
+            // rescheduled — otherwise a jittered policy would report one wait and apply a different one.
+            var retryPolicy = ResolveRetryPolicy(descriptor);
+            runState.WillRetry = terminal == CronnerHookEvent.Fail && retryPolicy.AllowsRetry(runState.Attempt);
+            runState.RetryDelay = runState.WillRetry ? retryPolicy.GetDelay(runState.Attempt) : null;
+            await DispatchLifecycleAsync(terminal, sp, descriptor, job, stopwatch.Elapsed, failure, runState, stoppingToken)
                 .ConfigureAwait(false);
         }
 
@@ -689,10 +704,10 @@ public sealed class CronnerHostedService : BackgroundService
     // its own fresh scope. Either way the run-state bag is threaded through.
     private Task DispatchLifecycleAsync(
         CronnerHookEvent hookEvent, IServiceProvider jobScope, CronnerJobDescriptor descriptor, CronnerJob job,
-        TimeSpan duration, Exception? exception, CronnerRunState runState, bool willRetry, CancellationToken cancellationToken) =>
+        TimeSpan duration, Exception? exception, CronnerRunState runState, CancellationToken cancellationToken) =>
         _hooks.DispatchTerminalAsync(
             hookEvent, jobScope, _jobProvider, descriptor, job, duration, exception, cancellationToken,
-            _options.HookScope, runState, willRetry);
+            _options.HookScope, runState);
 
     private static string? SerializeExecutionData(object? data) =>
         data is null ? null : CronnerPayloadSerializer.Serialize(data, data.GetType());
@@ -888,8 +903,26 @@ public sealed class CronnerHostedService : BackgroundService
         return policy == MisfirePolicy.Default ? MisfirePolicy.FireOnce : policy;
     }
 
+    // Resolves a task's effective retry policy: its own, the options default, or — when neither is set — the
+    // DefaultMaxRetries / RetryDelay shorthand, which is what an application configured before policies
+    // existed still carries. MaxAttempts counts the first run, DefaultMaxRetries does not, hence the + 1.
+    private CronnerRetryPolicy ResolveRetryPolicy(CronnerJobDescriptor? descriptor)
+    {
+        // A Concurrent run never reschedules itself — the schedule advanced up front, and the run only records
+        // its outcome (FinalizeConcurrentAsync) — so no further attempt would ever be dispatched. Report that
+        // honestly instead of telling a hook a retry is coming that never arrives.
+        if (descriptor?.Concurrency == CronnerConcurrencyMode.Concurrent)
+            return CronnerRetryPolicy.None;
+
+        return descriptor?.RetryPolicy
+            ?? _options.DefaultRetryPolicy
+            ?? (_shorthandRetryPolicy ??= new CronnerRetryPolicy(
+                Math.Max(1, _options.DefaultMaxRetries + 1), CronnerRetryStrategy.Fixed, _options.RetryDelay));
+    }
+
     private void ApplyOutcome(
-        CronnerJob job, CronnerJobDescriptor descriptor, bool cancelledByClient, Exception? failure, DateTimeOffset dueTime)
+        CronnerJob job, CronnerJobDescriptor descriptor, bool cancelledByClient, Exception? failure, DateTimeOffset dueTime,
+        CronnerRunState? runState = null)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -903,7 +936,7 @@ public sealed class CronnerHostedService : BackgroundService
         // An on-time run reschedules per concurrency (Queue runs an occurrence that came due during the run);
         // a run that MISFIRED (its occurrence was late beyond the threshold) reschedules per the misfire policy —
         // FireAll walks the backlog from the due time, the others jump to the next future occurrence.
-        var misfired = descriptor.CronString is not null && now - dueTime > _options.MisfireThreshold;
+        var misfired = descriptor.CronString is not null && job.RetryCount == 0 && now - dueTime > _options.MisfireThreshold;
         var catchUp = misfired
             ? ResolveMisfirePolicy(descriptor) == MisfirePolicy.FireAll
             : descriptor.Concurrency == CronnerConcurrencyMode.Queue;
@@ -913,10 +946,14 @@ public sealed class CronnerHostedService : BackgroundService
         if (failure is not null)
         {
             job.LastError = failure.Message;
-            if (job.RetryCount < _options.DefaultMaxRetries)
+            var retryPolicy = ResolveRetryPolicy(descriptor);
+            var attempt = job.RetryCount + 1;
+            if (retryPolicy.AllowsRetry(attempt))
             {
+                // Reuse the delay already reported to the Fail hook so a jittered policy cannot report one
+                // wait and apply another; recompute only if the run ended without reaching that hook.
                 job.RetryCount++;
-                job.NextRunUtc = now + _options.RetryDelay;
+                job.NextRunUtc = now + (runState?.RetryDelay ?? retryPolicy.GetDelay(attempt));
                 job.State = CronnerTaskState.Scheduled;
                 return;
             }

@@ -49,6 +49,17 @@ public static class CronnerSetup
                 cronnerOptions.HookScope = options.HookScope;
                 cronnerOptions.OnInvalidSchedule = options.OnInvalidSchedule;
                 cronnerOptions.DefaultMisfirePolicy = options.DefaultMisfire;
+
+                // Two ways to say the same thing, so both stay exercised. A policy wins wherever one is set;
+                // with CRONNER_RETRY_STRATEGY unset the shorthand below drives retries exactly as it always
+                // has. Mind the off-by-one: MaxRetries counts *retries*, MaxAttempts counts *attempts*.
+                if (options.RetryStrategy is not CronnerRetryStrategy.Default)
+                    cronnerOptions.DefaultRetryPolicy = new CronnerRetryPolicy(
+                        Math.Max(1, options.MaxRetries + 1),
+                        options.RetryStrategy,
+                        options.RetryDelay,
+                        jitter: options.RetryJitter);
+
                 cronnerOptions.DefaultMaxRetries = options.MaxRetries;
                 cronnerOptions.RetryDelay = options.RetryDelay;
             });
@@ -146,10 +157,12 @@ public static class CronnerSetup
             })
             .OnFail(context =>
             {
-                // WillRetry says whether another attempt is coming — only alert on the final failure.
+                // OnFail fires per ATTEMPT, not per run. WillRetry says whether another one is coming (and
+                // RetryDelay how long the wait is), so an alert can hold off until the final failure.
                 logger.LogWarning(
-                    "[delegate hook] {TaskId} failed: {Error} (willRetry={WillRetry})",
-                    context.Job.Id, context.Exception?.Message, context.WillRetry);
+                    "[delegate hook] {TaskId} failed on attempt {Attempt}/{MaxAttempts}: {Error} (willRetry={WillRetry}, retryIn={RetryDelay})",
+                    context.Job.Id, context.Attempt, context.MaxAttempts, context.Exception?.Message,
+                    context.WillRetry, context.RetryDelay);
                 return Task.CompletedTask;
             })
             .OnCancel(context =>
@@ -196,6 +209,17 @@ public static class CronnerSetup
                     // Queue + FireAll: after downtime this task drains its whole backlog in order (see
                     // docs/scheduler-semantics.md), overriding the global CRONNER_DEFAULT_MISFIRE.
                     .WithMisfirePolicy(MisfirePolicy.FireAll))
+
+            // A fluent retry policy: two attempts, 3s apart, then the attempts are exhausted and the task
+            // waits for its next cron occurrence. The attribute flavour is on RetryJobs.FlakyAsync.
+            .Sched<RetryJobs>(
+                x => x.AlwaysFailsAsync(x.HasParam<ICronnerJobContext>(), x.HasParam<CancellationToken>()),
+                schedule => schedule
+                    .WithCron("0 */3 * * * *")
+                    .WithId("retry:exhausted")
+                    .WithRetryPolicy(policy => policy
+                        .MaxAttempts(2)
+                        .FixedDelay(TimeSpan.FromSeconds(3))))
 
             // ── Per-schedule hooks: every hook style, attached to this one task and no other. ──────
             .Sched<ProgressJobs>(

@@ -43,7 +43,8 @@ internal static class AttributeScanner
 
                     yield return new CronnerJobDescriptor(
                         id, CronnerJobNaming.GetName(method), attribute.CronString, type, method, arguments,
-                        attribute.Priority, attribute.Concurrency, attribute.Description, attribute.MisfirePolicy);
+                        attribute.Priority, attribute.Concurrency, attribute.Description, attribute.MisfirePolicy,
+                        hooks: null, retryPolicy: CronnerRetryPolicy.FromTaskAttribute(id, attribute));
                 }
             }
         }

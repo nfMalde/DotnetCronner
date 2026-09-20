@@ -96,10 +96,26 @@ public sealed class CronnerOptions
     /// </summary>
     public int MisfireCatchUpMax { get; set; } = 100;
 
-    /// <summary>Number of automatic retries after a failed execution. Defaults to 0 (no retry).</summary>
+    /// <summary>
+    /// The default <see cref="CronnerRetryPolicy"/> for tasks that do not define one of their own (via
+    /// <c>WithRetryPolicy(...)</c> or the <c>[CronnerTask]</c> retry properties). <c>null</c> — the default —
+    /// falls back to <see cref="DefaultMaxRetries"/> / <see cref="RetryDelay"/>, so an application that never
+    /// touches this keeps exactly the retry behavior it had before policies existed.
+    /// </summary>
+    public CronnerRetryPolicy? DefaultRetryPolicy { get; set; }
+
+    /// <summary>
+    /// Number of automatic retries after a failed execution. Defaults to 0 (no retry). This is the shorthand
+    /// for a fixed-delay policy: it is used only while <see cref="DefaultRetryPolicy"/> is <c>null</c>, and is
+    /// equivalent to a policy with <c>MaxAttempts = DefaultMaxRetries + 1</c> (attempt counts include the
+    /// first run, retry counts do not). Reach for <see cref="DefaultRetryPolicy"/> for backoff or jitter.
+    /// </summary>
     public int DefaultMaxRetries { get; set; }
 
-    /// <summary>Delay between retries. Defaults to <see cref="TimeSpan.Zero"/>.</summary>
+    /// <summary>
+    /// Delay between retries under the <see cref="DefaultMaxRetries"/> shorthand. Defaults to
+    /// <see cref="TimeSpan.Zero"/>. Ignored once <see cref="DefaultRetryPolicy"/> is set.
+    /// </summary>
     public TimeSpan RetryDelay { get; set; } = TimeSpan.Zero;
 
     /// <summary>Whether to scan the entry assembly for <see cref="CronnerTaskAttribute"/> tasks. Defaults to <c>true</c>.</summary>

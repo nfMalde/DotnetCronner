@@ -31,6 +31,33 @@ public sealed class CronnerTaskContext
     /// </summary>
     public bool WillRetry { get; internal set; }
 
+    /// <summary>
+    /// This attempt's 1-based number — <c>1</c> on the first run of an occurrence, <c>2</c> on its first
+    /// retry, and so on. Matches the <see cref="CronnerJobExecution.Attempt"/> recorded for the run.
+    /// </summary>
+    public int Attempt { get; internal set; } = 1;
+
+    /// <summary>
+    /// Total attempts the effective retry policy allows, <em>including the first run</em>. <c>1</c> means the
+    /// task is not retried. Together with <see cref="Attempt"/> this reads as "attempt 2 of 3".
+    /// </summary>
+    public int MaxAttempts { get; internal set; } = 1;
+
+    /// <summary>
+    /// How long the scheduler will wait before the next attempt, when <see cref="WillRetry"/> is <c>true</c>;
+    /// <c>null</c> otherwise. This is the delay actually used to reschedule, so a jittered policy reports the
+    /// wait that was drawn rather than a fresh random one.
+    /// </summary>
+    public TimeSpan? RetryDelay { get; internal set; }
+
+    /// <summary>
+    /// The message of the failure that caused this retry, or <c>null</c> on a first attempt — available from
+    /// <c>OnStart</c> onwards, so a retry can see why the previous attempt failed. It is the message only: the
+    /// exception object itself does not survive the wait between attempts (a retry is re-dispatched from the
+    /// store, possibly by another instance). The current attempt's own failure is <see cref="Exception"/>.
+    /// </summary>
+    public string? PreviousError { get; internal set; }
+
     /// <summary>This run's shared state bag, set by the scheduler. Backs <see cref="Set{T}"/>/<see cref="Get{T}"/>.</summary>
     internal CronnerRunState? RunState { get; init; }
 

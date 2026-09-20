@@ -89,6 +89,15 @@ public interface ICronnerBuilder
     ICronnerBuilder WithExecutionHistory(int keepPerTask);
 
     /// <summary>
+    /// Sets the default retry policy for every task that does not define one of its own — how many attempts a
+    /// failing task gets and how long to wait between them. Attempt counts include the first run, so
+    /// <c>p =&gt; p.MaxAttempts(5).ExponentialBackoff(TimeSpan.FromSeconds(5)).WithJitter()</c> is one run plus
+    /// four retries, waiting ~5s, ~10s, ~20s, ~40s. Overrides
+    /// <see cref="CronnerOptions.DefaultMaxRetries"/> / <see cref="CronnerOptions.RetryDelay"/>.
+    /// </summary>
+    ICronnerBuilder WithRetryPolicy(Action<ICronnerRetryPolicyBuilder> configure);
+
+    /// <summary>
     /// Adds a global lifecycle/lock hook instance. Pass <paramref name="scope"/> to override
     /// <see cref="CronnerOptions.HookScope"/> for this hook's terminal events only (e.g.
     /// <see cref="CronnerHookScope.Isolated"/> so it never contends with the job's unit of work);

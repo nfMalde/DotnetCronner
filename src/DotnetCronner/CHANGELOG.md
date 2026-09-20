@@ -6,6 +6,55 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-20
+
+Reliability & retry improvements: retries are now described by an explicit **retry policy** —
+backoff strategies, jitter and an attempt budget — and every attempt can see where it stands. Documented in
+[docs/retries.md](../../docs/retries.md).
+
+### Added
+- **Retry policies.** `CronnerRetryPolicy` says how many attempts a failing task gets (`MaxAttempts`, counting
+  the first run) and how long to wait between them. Set one per task with `WithRetryPolicy(...)` or the
+  `[CronnerTask]` retry properties, or as the default for every task with `WithRetryPolicy(...)` on the
+  builder / `CronnerOptions.DefaultRetryPolicy`:
+
+  ```csharp
+  cronner.Sched<ReportJobs>(x => x.SendAsync(x.HasParam<CancellationToken>()), o => o
+      .WithCron("0 * * * *")
+      .WithRetryPolicy(p => p.MaxAttempts(5).ExponentialBackoff(TimeSpan.FromSeconds(5)).WithJitter()));
+  ```
+- **Backoff strategies** (`CronnerRetryStrategy`): `Immediate`, `Fixed` and `Exponential` (doubling, capped by
+  `MaxDelay`, default one hour). **Jitter is a modifier, not a strategy** — `WithJitter()` composes with any
+  of them and draws the wait from `[delay/2, delay]`, so tasks knocked over by the same outage do not all
+  retry at the same instant.
+- **Retry properties on `[CronnerTask]`** — `MaxAttempts`, `RetryStrategy`, `RetryDelaySeconds`,
+  `RetryMaxDelaySeconds`, `RetryJitter` (an attribute cannot carry a lambda or a `TimeSpan`). A task that sets
+  any of them without `MaxAttempts` throws at registration, naming the task, rather than looking retried while
+  never being retried.
+- **Retry context.** The job body reads `Attempt`, `MaxAttempts` and `PreviousError` off `ICronnerJobContext`;
+  hooks additionally see `RetryDelay` alongside the existing `WillRetry` on `CronnerTaskContext`.
+  `PreviousError` is the failure *message* — the exception object does not survive the wait between attempts,
+  since a retry is re-dispatched from the store, possibly by another instance. `RetryDelay` is the delay
+  actually used to reschedule, so a jittered policy reports the wait it really applies.
+- `CronnerRetryPolicy.FromTaskAttribute(...)`, so a custom discovery mechanism can read the attribute's retry
+  properties the same way the built-in scanner does.
+
+### Changed
+- `CronnerOptions.DefaultMaxRetries` / `RetryDelay` are now the **shorthand** for a fixed-delay policy, used
+  while no policy is set anywhere. They are unchanged and not deprecated: an application that never touches
+  policies keeps exactly the retry behavior it had. Note the off-by-one between the vocabularies —
+  `DefaultMaxRetries` counts *retries*, `MaxAttempts` counts *attempts*, so `DefaultMaxRetries = 2` is the
+  same as `MaxAttempts(3)`.
+- A retry is no longer eligible to be treated as a **misfire**. Its due time is the retry instant, not a cron
+  occurrence, so a retry that itself ran late can no longer send `MisfirePolicy.FireAll` walking a cron
+  backlog on its behalf.
+
+### Fixed
+- **`ctx.WillRetry` no longer promises a retry that never arrives.** A `CronnerConcurrencyMode.Concurrent` run
+  advances the schedule up front and only records its outcome, so it is never retried — but `OnFail` still
+  reported `WillRetry = true` while attempts nominally remained. Such a run now reports `MaxAttempts` 1 and
+  `WillRetry` `false`. Only the reporting changes; no `Concurrent` task was ever actually retried.
+
 ## [0.0.9] - 2026-09-13
 
 Scheduler semantics & misfire handling: the task lifecycle and every scheduling behavior are

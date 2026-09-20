@@ -30,6 +30,13 @@ public interface ICronnerScheduleOptions
     ICronnerScheduleOptions WithMisfirePolicy(MisfirePolicy policy);
 
     /// <summary>
+    /// Sets how this task is retried when it fails, overriding <see cref="CronnerOptions.DefaultRetryPolicy"/>
+    /// for this task only. Attempt counts include the first run, so
+    /// <c>p =&gt; p.MaxAttempts(3).FixedDelay(TimeSpan.FromSeconds(10))</c> is one run plus two retries.
+    /// </summary>
+    ICronnerScheduleOptions WithRetryPolicy(Action<ICronnerRetryPolicyBuilder> configure);
+
+    /// <summary>
     /// Attaches a hook instance to this schedule only. Pass <paramref name="scope"/> to override
     /// <see cref="CronnerOptions.HookScope"/> for this hook's terminal events; <c>null</c> inherits the default.
     /// </summary>
@@ -167,6 +174,8 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
 
     public MisfirePolicy MisfirePolicy { get; private set; } = MisfirePolicy.Default;
 
+    public CronnerRetryPolicy? RetryPolicy { get; private set; }
+
     public IReadOnlyList<ICronnerTaskHook> Hooks => _hooks;
 
     public ICronnerScheduleOptions WithCron(string cronString)
@@ -202,6 +211,12 @@ internal sealed class CronnerScheduleOptions : ICronnerScheduleOptions
     public ICronnerScheduleOptions WithMisfirePolicy(MisfirePolicy policy)
     {
         MisfirePolicy = policy;
+        return this;
+    }
+
+    public ICronnerScheduleOptions WithRetryPolicy(Action<ICronnerRetryPolicyBuilder> configure)
+    {
+        RetryPolicy = CronnerRetryPolicyBuilder.Create(configure);
         return this;
     }
 
