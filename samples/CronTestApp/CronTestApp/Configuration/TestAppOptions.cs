@@ -104,6 +104,16 @@ public sealed class TestAppOptions
     /// <summary>Delay between retries.</summary>
     public required TimeSpan RetryDelay { get; init; }
 
+    /// <summary>
+    /// How the wait before each retry is calculated. <see cref="CronnerRetryStrategy.Default"/> — the
+    /// default — leaves <c>DefaultRetryPolicy</c> unset, so the <c>MaxRetries</c> / <c>RetryDelay</c>
+    /// shorthand drives retries instead.
+    /// </summary>
+    public CronnerRetryStrategy RetryStrategy { get; init; }
+
+    /// <summary>Whether the default retry policy spreads its wait randomly. Only used with a strategy.</summary>
+    public bool RetryJitter { get; init; }
+
     /// <summary>StackExchange.Redis connection string.</summary>
     public required string RedisConnection { get; init; }
 
@@ -185,6 +195,14 @@ public sealed class TestAppOptions
         LockTtl = TimeSpan.FromSeconds(ReadInt(configuration, "CRONNER_LOCK_TTL_SECONDS", 60)),
         MaxRetries = ReadInt(configuration, "CRONNER_MAX_RETRIES", 0),
         RetryDelay = TimeSpan.FromSeconds(ReadInt(configuration, "CRONNER_RETRY_DELAY_SECONDS", 0)),
+        RetryStrategy = ReadEnum(configuration, "CRONNER_RETRY_STRATEGY", CronnerRetryStrategy.Default,
+            new Dictionary<string, CronnerRetryStrategy>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["immediate"] = CronnerRetryStrategy.Immediate,
+                ["fixed"] = CronnerRetryStrategy.Fixed,
+                ["exponential"] = CronnerRetryStrategy.Exponential,
+            }),
+        RetryJitter = ReadBool(configuration, "CRONNER_RETRY_JITTER", false),
         RedisConnection = ReadString(configuration, "CRONNER_REDIS", "localhost:6379"),
         RedisKeyPrefix = ReadString(configuration, "CRONNER_REDIS_KEY_PREFIX", "cronner:"),
         RedisCacheTtl = ReadInt(configuration, "CRONNER_REDIS_CACHE_TTL_SECONDS", 0) is var ttl && ttl > 0
@@ -231,6 +249,8 @@ public sealed class TestAppOptions
         lockTtl = LockTtl.ToString(),
         maxRetries = MaxRetries,
         retryDelay = RetryDelay.ToString(),
+        retryStrategy = RetryStrategy.ToString(),
+        retryJitter = RetryJitter,
         keepAliveInterval = (KeepAliveInterval ?? TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2))).ToString(),
         oneOffRetention = OneOffRetention == 0 ? "keep all" : OneOffRetention.ToString(),
         executionHistory = ExecutionHistory == 0 ? "off" : $"keep newest {ExecutionHistory} per task",
@@ -265,6 +285,17 @@ public sealed class TestAppOptions
         return int.TryParse(value.Trim(), out var parsed)
             ? parsed
             : throw new InvalidOperationException($"{key}='{value}' is not a whole number.");
+    }
+
+    private static bool ReadBool(IConfiguration configuration, string key, bool fallback)
+    {
+        var value = configuration[key];
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+
+        return bool.TryParse(value.Trim(), out var parsed)
+            ? parsed
+            : throw new InvalidOperationException($"{key}='{value}' is not true or false.");
     }
 
     private static TEnum ReadEnum<TEnum>(

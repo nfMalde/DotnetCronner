@@ -22,6 +22,26 @@ public interface ICronnerJobContext
     /// </summary>
     string ExecutionId { get; }
 
+    /// <summary>
+    /// This attempt's 1-based number — <c>1</c> on the first run of an occurrence, <c>2</c> on its first
+    /// retry, and so on — so a task can behave differently on a retry (skip work it already committed, widen a
+    /// timeout, log louder). <c>1</c> outside a task run.
+    /// </summary>
+    int Attempt => 1;
+
+    /// <summary>
+    /// Total attempts the effective retry policy allows, including the first run. <c>1</c> means this task is
+    /// not retried, so a failure here is final.
+    /// </summary>
+    int MaxAttempts => 1;
+
+    /// <summary>
+    /// The message of the failure that caused this retry, or <c>null</c> on a first attempt. The exception
+    /// object itself does not survive the wait between attempts (a retry is re-dispatched from the store,
+    /// possibly by another instance), so only the message is carried across.
+    /// </summary>
+    string? PreviousError => null;
+
     /// <summary>The most recent total progress reported for this execution.</summary>
     decimal TotalProgress { get; }
 

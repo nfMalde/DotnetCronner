@@ -21,6 +21,12 @@ internal sealed class CronnerJobContext : ICronnerJobContext
 
     public decimal TotalProgress { get; private set; }
 
+    public int Attempt => _runState?.Attempt ?? 1;
+
+    public int MaxAttempts => _runState?.MaxAttempts ?? 1;
+
+    public string? PreviousError => _runState?.PreviousError;
+
     /// <summary>Wires the emitter for this run. Called by the scheduler; a task never calls this.</summary>
     internal void Initialize(CronnerProgressEmitter emitter) => _emitter = emitter;
 

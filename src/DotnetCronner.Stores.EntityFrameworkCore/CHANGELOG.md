@@ -6,6 +6,13 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-20
+
+Released with the suite at 0.1.0 (depends on `DotnetCronner.Abstractions >= 0.1.0` and
+`DotnetCronner >= 0.1.0`). No store code changes and **no migration needed** — retry policies live entirely
+in the scheduler engine, and the attempt count a retry resumes from is the `RetryCount` column that already
+exists. The schema is unchanged from 0.0.9.
+
 ## [0.0.9] - 2026-09-13
 
 Released with the suite at 0.0.9 (depends on `DotnetCronner.Abstractions >= 0.0.9` and `DotnetCronner >= 0.0.9`).

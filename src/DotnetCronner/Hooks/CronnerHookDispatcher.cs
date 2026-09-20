@@ -35,16 +35,15 @@ public sealed class CronnerHookDispatcher
         decimal totalProgress = 0m,
         CronnerProgressInfo? progressScope = null,
         CronnerRunState? runState = null,
-        bool willRetry = false,
         object? progressPayload = null)
     {
         // Global hooks, then per-schedule hooks — each in its own scope.
         foreach (var hook in _globalHooks.Hooks)
-            await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload).ConfigureAwait(false);
+            await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, progressPayload).ConfigureAwait(false);
 
         if (descriptor is not null)
             foreach (var hook in descriptor.Hooks)
-                await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload).ConfigureAwait(false);
+                await InvokeInOwnScopeAsync(hookEvent, hook, rootProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, progressPayload).ConfigureAwait(false);
 
         // Hooks registered in DI as ICronnerTaskHook, resolved together in one dedicated scope.
         await using var scope = rootProvider.CreateAsyncScope();
@@ -52,7 +51,7 @@ public sealed class CronnerHookDispatcher
         CronnerTaskContext? context = null;
         foreach (var hook in diHooks)
         {
-            context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload);
+            context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, progressPayload);
             await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
         }
     }
@@ -60,11 +59,11 @@ public sealed class CronnerHookDispatcher
     private async Task InvokeInOwnScopeAsync(
         CronnerHookEvent hookEvent, ICronnerTaskHook hook, IServiceProvider rootProvider,
         CronnerJob job, TimeSpan duration, Exception? exception, CancellationToken cancellationToken,
-        decimal totalProgress, CronnerProgressInfo? progressScope, CronnerRunState? runState, bool willRetry,
+        decimal totalProgress, CronnerProgressInfo? progressScope, CronnerRunState? runState,
         object? progressPayload)
     {
         await using var scope = rootProvider.CreateAsyncScope();
-        var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, willRetry, progressPayload);
+        var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, totalProgress, progressScope, runState, progressPayload);
         await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
     }
 
@@ -79,11 +78,11 @@ public sealed class CronnerHookDispatcher
     internal async Task DispatchTerminalAsync(
         CronnerHookEvent hookEvent, IServiceProvider jobScope, IServiceProvider rootProvider,
         CronnerJobDescriptor? descriptor, CronnerJob job, TimeSpan duration, Exception? exception,
-        CancellationToken cancellationToken, CronnerHookScope defaultScope, CronnerRunState? runState, bool willRetry)
+        CancellationToken cancellationToken, CronnerHookScope defaultScope, CronnerRunState? runState)
     {
         CronnerTaskContext? sharedContext = null;
         CronnerTaskContext Shared() => sharedContext ??=
-            NewContext(jobScope, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+            NewContext(jobScope, job, duration, exception, cancellationToken, 0m, null, runState);
 
         async Task RunAsync(ICronnerTaskHook hook)
         {
@@ -91,7 +90,7 @@ public sealed class CronnerHookDispatcher
             if (effective == CronnerHookScope.Isolated)
             {
                 await using var scope = rootProvider.CreateAsyncScope();
-                var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+                var context = NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState);
                 await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
             }
             else
@@ -114,7 +113,7 @@ public sealed class CronnerHookDispatcher
             CronnerTaskContext? context = null;
             foreach (var hook in scope.ServiceProvider.GetServices<ICronnerTaskHook>())
             {
-                context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState, willRetry);
+                context ??= NewContext(scope.ServiceProvider, job, duration, exception, cancellationToken, 0m, null, runState);
                 await SafeInvokeAsync(hookEvent, hook, context, job.Id).ConfigureAwait(false);
             }
         }
@@ -142,7 +141,7 @@ public sealed class CronnerHookDispatcher
     private CronnerTaskContext NewContext(
         IServiceProvider services, CronnerJob job, TimeSpan duration, Exception? exception,
         CancellationToken cancellationToken, decimal totalProgress, CronnerProgressInfo? progressScope,
-        CronnerRunState? runState, bool willRetry, object? progressPayload = null) =>
+        CronnerRunState? runState, object? progressPayload = null) =>
         new()
         {
             Job = job,
@@ -153,7 +152,11 @@ public sealed class CronnerHookDispatcher
             TotalProgress = totalProgress,
             ProgressScope = progressScope,
             RunState = runState,
-            WillRetry = willRetry,
+            WillRetry = runState?.WillRetry ?? false,
+            Attempt = runState?.Attempt ?? 1,
+            MaxAttempts = runState?.MaxAttempts ?? 1,
+            RetryDelay = runState?.RetryDelay,
+            PreviousError = runState?.PreviousError,
             ProgressPayload = progressPayload,
             LockTtl = _options.LockTtl,
             KeepAliveInterval = _options.EffectiveKeepAliveInterval(),

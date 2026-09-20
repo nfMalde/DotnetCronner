@@ -50,10 +50,17 @@ Retention prunes finished one-offs (`WithOneOffRetention`).
 
 ## Retries
 
-With `DefaultMaxRetries > 0`, a failed run is retried after `RetryDelay`. **A retry is a distinct
-execution** — a new `ExecutionId` and `Attempt + 1` — not a re-run of the same execution record. `OnFail`
-fires on **each** failed attempt; `ctx.WillRetry` tells a hook whether another attempt is coming, so it can
-alert only on the final failure.
+A failed run is retried while its retry policy still allows an attempt — `WithRetryPolicy(...)` per task or
+as the scheduler default, or the `DefaultMaxRetries` / `RetryDelay` shorthand when no policy is set. **A
+retry is a distinct execution** — a new `ExecutionId` and `Attempt + 1` — not a re-run of the same execution
+record, and never a new cron occurrence: while attempts remain the task is rescheduled at the retry delay,
+and the cron schedule resumes only once an attempt succeeds or the attempts run out. A retry is therefore
+also never treated as a misfire. `OnFail` fires on **each** failed attempt; `ctx.WillRetry` tells a hook
+whether another attempt is coming (and `ctx.RetryDelay` how long the wait is), so it can alert only on the
+final failure.
+
+Attempt counting, the backoff strategies, jitter and the retry context are documented in full in
+[retries.md](retries.md).
 
 ## Cancellation
 

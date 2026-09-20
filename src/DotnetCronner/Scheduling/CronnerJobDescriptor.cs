@@ -21,7 +21,8 @@ public sealed class CronnerJobDescriptor
         CronnerConcurrencyMode concurrency = CronnerConcurrencyMode.DropAndForget,
         string? description = null,
         MisfirePolicy misfirePolicy = MisfirePolicy.Default,
-        IReadOnlyList<ICronnerTaskHook>? hooks = null)
+        IReadOnlyList<ICronnerTaskHook>? hooks = null,
+        CronnerRetryPolicy? retryPolicy = null)
     {
         Id = id;
         Name = name;
@@ -34,6 +35,7 @@ public sealed class CronnerJobDescriptor
         Description = description;
         MisfirePolicy = misfirePolicy;
         Hooks = hooks ?? [];
+        RetryPolicy = retryPolicy;
     }
 
     /// <summary>Stable unique id of the task.</summary>
@@ -71,4 +73,11 @@ public sealed class CronnerJobDescriptor
 
     /// <summary>Hooks attached to this specific schedule (in addition to any global hooks).</summary>
     public IReadOnlyList<ICronnerTaskHook> Hooks { get; }
+
+    /// <summary>
+    /// How this task is retried when it fails. <c>null</c> means inherit
+    /// <see cref="CronnerOptions.DefaultRetryPolicy"/> (which itself falls back to the
+    /// <see cref="CronnerOptions.DefaultMaxRetries"/> shorthand).
+    /// </summary>
+    public CronnerRetryPolicy? RetryPolicy { get; }
 }

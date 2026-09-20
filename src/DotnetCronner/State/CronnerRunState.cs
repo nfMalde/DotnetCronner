@@ -31,6 +31,27 @@ internal sealed class CronnerRunState
     /// <summary>The history record for this run, when execution history is enabled; otherwise <c>null</c>.</summary>
     public CronnerJobExecution? Execution { get; set; }
 
+    /// <summary>
+    /// This attempt's 1-based number (<c>1</c> is the first run). Set when the run starts, so the job body and
+    /// every hook of the run read the same value.
+    /// </summary>
+    public int Attempt { get; set; } = 1;
+
+    /// <summary>Total attempts the effective retry policy allows, including the first run.</summary>
+    public int MaxAttempts { get; set; } = 1;
+
+    /// <summary>The message of the failure that caused this retry, or <c>null</c> on a first attempt.</summary>
+    public string? PreviousError { get; set; }
+
+    /// <summary>Whether another attempt follows this one. Only meaningful once the run has failed.</summary>
+    public bool WillRetry { get; set; }
+
+    /// <summary>
+    /// The wait before the next attempt, decided once when the run ends so that a jittered delay a hook reads
+    /// is the delay actually used to reschedule. <c>null</c> when no retry follows.
+    /// </summary>
+    public TimeSpan? RetryDelay { get; set; }
+
     /// <summary>Stores <paramref name="value"/> under its runtime type, replacing any existing value of that type.</summary>
     public void Set<T>(T value) where T : notnull => _items[typeof(T)] = value;
 
