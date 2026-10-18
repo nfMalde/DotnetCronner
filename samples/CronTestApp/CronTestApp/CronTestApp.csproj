@@ -15,6 +15,10 @@
     <!-- EF Core provider for the ef-postgres stores (EF Core itself comes from the Cronner EF store). -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- The OTel SDK and exporter are the application's choice; DotnetCronner.OpenTelemetry only
+         subscribes this provider to the scheduler's meter and activity source. -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.20.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +26,8 @@
     <ProjectReference Include="..\..\..\src\DotnetCronner.Stores.EntityFrameworkCore\DotnetCronner.Stores.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\..\..\src\DotnetCronner.Stores.Redis\DotnetCronner.Stores.Redis.csproj" />
     <ProjectReference Include="..\..\..\src\DotnetCronner\DotnetCronner.csproj" />
+    <ProjectReference Include="..\..\..\src\DotnetCronner.AspNetCore\DotnetCronner.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\src\DotnetCronner.OpenTelemetry\DotnetCronner.OpenTelemetry.csproj" />
     <!-- Referenced as an analyzer (not as a library) so the build-time DC0001/DC0002 cron diagnostics
          light up here exactly as they do for consumers of the NuGet package. -->
     <ProjectReference Include="..\..\..\src\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"

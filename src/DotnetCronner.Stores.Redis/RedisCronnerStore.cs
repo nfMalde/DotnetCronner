@@ -28,6 +28,11 @@ public sealed class RedisCronnerStore : ICronnerStore
     private IDatabase Db => _redis.GetDatabase();
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    /// <remarks>Sends Redis <c>PING</c> — cheaper and more direct than reading a key that does not exist.</remarks>
+    public Task PingAsync(CancellationToken cancellationToken = default) => Db.PingAsync();
+
+    /// <inheritdoc />
     public async Task<CronnerJob?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
         var value = await Db.HashGetAsync(_jobsKey, id).ConfigureAwait(false);

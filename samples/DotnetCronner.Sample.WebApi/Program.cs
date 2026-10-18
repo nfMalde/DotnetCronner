@@ -1,5 +1,7 @@
 using DotnetCronner;
 using DotnetCronner.Sample.WebApi.Jobs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +23,22 @@ builder.Services.AddDotnetCronner(cronner => cronner
     // A global hook that turns total/scope progress (and each report's custom payload) into GET /progress.
     .AddHook<ProgressHook>());
 
+// Observability. The scheduler publishes its metrics and spans on a plain Meter / ActivitySource named
+// "DotnetCronner" — AddCronnerInstrumentation() just subscribes this provider to them. The console exporter
+// is used here so a `dotnet run` shows them; swap it for OTLP in a real deployment.
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics
+        .AddCronnerInstrumentation()
+        .AddConsoleExporter())
+    .WithTracing(tracing => tracing
+        .AddCronnerInstrumentation()
+        .AddConsoleExporter());
+
+// Health checks: scheduler started, still polling for due work, and able to reach its store. A task that
+// THROWS never shows up here — that is the application's to handle, not a reason to restart the process.
+builder.Services.AddHealthChecks()
+    .AddCronner(options => options.StalledRunThreshold = TimeSpan.FromMinutes(5), tags: ["ready"]);
+
 var app = builder.Build();
 
 // Schedule tasks (and, if desired, choose a store) after the host is built —
@@ -37,7 +55,22 @@ app.UseDotnetCronner(cronner => cronner
         o => o.WithCron("*/20 * * * * *").WithId("import")));
 
 // No bundled dashboard — integrate management into your own (already secured) endpoints via ICronnerClient.
-app.MapGet("/", () => "DotnetCronner sample. Try /tasks, /tasks/{id}, /tasks/{id}/history, /progress, /runs, POST /tasks/{id}/run, POST /tasks/{id}/cancel");
+app.MapGet("/", () => "DotnetCronner sample. Try /tasks, /tasks/{id}, /tasks/{id}/history, /progress, /runs, /health, /scheduler, POST /tasks/{id}/run, POST /tasks/{id}/cancel");
+
+// Readiness: Unhealthy when the scheduler is broken, Degraded when a run has outlived StalledRunThreshold.
+app.MapHealthChecks("/health");
+
+// The same facts the health check reads, straight off the diagnostics singleton — for your own admin page.
+app.MapGet("/scheduler", (CronnerSchedulerDiagnostics diagnostics) => Results.Ok(new
+{
+    diagnostics.IsStarted,
+    diagnostics.StartedUtc,
+    diagnostics.LastPollUtc,
+    diagnostics.PollCount,
+    diagnostics.LastPollError,
+    diagnostics.RunningCount,
+    diagnostics.LongestRunningDuration,
+}));
 
 // Live progress rebuilt from the progress hooks, incl. each report's custom payload (`note`).
 app.MapGet("/progress", (ProgressLog log) => Results.Ok(log.Snapshot()));

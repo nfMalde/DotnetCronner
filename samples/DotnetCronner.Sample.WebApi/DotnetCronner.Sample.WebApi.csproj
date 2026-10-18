@@ -3,9 +3,18 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DotnetCronner\DotnetCronner.csproj" />
     <ProjectReference Include="..\..\src\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCronner.AspNetCore\DotnetCronner.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCronner.OpenTelemetry\DotnetCronner.OpenTelemetry.csproj" />
     <!-- Run the DotnetCronner analyzer against this project (analyzers don't flow through project references). -->
     <ProjectReference Include="..\..\src\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"
                       PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <!-- The OpenTelemetry SDK + an exporter are the APPLICATION's choice; DotnetCronner.OpenTelemetry only
+       registers the scheduler's meter and activity source with whichever provider you build. -->
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.20.0" />
   </ItemGroup>
 
   <PropertyGroup>

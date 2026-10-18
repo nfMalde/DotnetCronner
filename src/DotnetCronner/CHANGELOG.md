@@ -6,6 +6,40 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+Observability: the scheduler now reports on itself — metrics, distributed-tracing spans and live
+scheduler state — with **no new dependency in this package**. Documented in
+[docs/observability.md](../../docs/observability.md).
+
+### Added
+- **Metrics**, published on a base-class-library `Meter` named `DotnetCronner`:
+  `cronner.jobs.started` / `.completed` / `.failed` / `.cancelled` / `.retries` / `.misfired`,
+  `cronner.jobs.duration`, `cronner.jobs.scheduling.delay` (how late a run started against its due time),
+  `cronner.locks.acquired` / `.lost`, and the observable `cronner.jobs.running`. Collect them with
+  `AddMeter(CronnerDiagnostics.MeterName)`, or `AddCronnerInstrumentation()` from the new
+  `DotnetCronner.OpenTelemetry` package.
+- **Tracing**: one span per execution attempt (`cronner.execute <task id>`) on an `ActivitySource` named
+  `DotnetCronner`, tagged with the task id, execution id, attempt and outcome, and carrying the exception
+  on failure. The span is the **ambient activity while the job body runs**, so the spans a job emits itself
+  (EF Core, HttpClient) nest underneath it. A retry is a separate execution and so a separate span.
+- `CronnerDiagnostics` — the meter and activity-source names, tag keys and outcome values, so nothing has to
+  be spelled as a magic string.
+- `CronnerSchedulerDiagnostics` — a resolvable singleton exposing live scheduler state: `IsStarted`,
+  `StartedUtc`, `LastPollUtc`, `PollCount`, `LastPollError`, `RunningCount` and `LongestRunningDuration`.
+  A `LastPollUtc` that stops advancing is the signature of a wedged poll loop, which no other signal shows.
+
+### Changed
+- Metric cardinality is bounded by construction: tags are the task id and short enumerations only, and
+  nothing a job *processes* is ever used as a tag. The per-run execution id is a span tag only.
+- Nothing is collected, and nothing allocates, until a listener subscribes — so an application that
+  ignores all of this pays nothing for it.
+
+### Fixed
+- Pinned `System.Security.Cryptography.Pkcs` in the integration-test project: it arrived transitively at a
+  version carrying published advisories (GHSA-846f-f764-76mx, GHSA-2fmv-rv2c-59x7), which NuGet audit turned
+  into build errors under `TreatWarningsAsErrors`. Test-only; no shipped package was affected.
+
 ## [0.1.0] - 2026-09-20
 
 Reliability & retry improvements: retries are now described by an explicit **retry policy** —

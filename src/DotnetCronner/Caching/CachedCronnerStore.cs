@@ -78,6 +78,14 @@ public sealed class CachedCronnerStore : ICronnerStore
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    /// <remarks>
+    /// Straight through to the backing store: a liveness probe answered from cache would report a store that
+    /// has gone away as healthy, which is the one thing it exists to catch.
+    /// </remarks>
+    public Task PingAsync(CancellationToken cancellationToken = default) => _inner.PingAsync(cancellationToken);
+
+    /// <inheritdoc />
     public Task OnStartAsync(CronnerJob job, CancellationToken cancellationToken = default) =>
         _inner.OnStartAsync(job, cancellationToken);
 

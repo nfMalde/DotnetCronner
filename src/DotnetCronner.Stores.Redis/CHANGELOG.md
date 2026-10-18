@@ -6,6 +6,15 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+Released with the suite at 0.2.0 (depends on `DotnetCronner.Abstractions >= 0.2.0` and
+`DotnetCronner >= 0.2.0`). No data-format change.
+
+### Added
+- Implements `PingAsync` with Redis `PING` — cheaper and more direct than the default probe's read of a key
+  that does not exist. Used by the health checks in `DotnetCronner.AspNetCore`.
+
 ## [0.1.0] - 2026-09-20
 
 Released with the suite at 0.1.0 (depends on `DotnetCronner.Abstractions >= 0.1.0` and

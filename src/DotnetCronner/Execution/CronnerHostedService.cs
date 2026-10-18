@@ -24,6 +24,8 @@ public sealed class CronnerHostedService : BackgroundService
     private readonly CronnerHookDispatcher _hooks;
     private readonly CronnerJobServices _jobServices;
     private readonly CronnerOptions _options;
+    private readonly CronnerInstrumentation _instrumentation;
+    private readonly CronnerSchedulerDiagnostics _diagnostics;
     private readonly ILogger<CronnerHostedService> _logger;
     private readonly string _owner = Guid.NewGuid().ToString("N");
 
@@ -52,6 +54,8 @@ public sealed class CronnerHostedService : BackgroundService
         CronnerHookDispatcher hooks,
         CronnerJobServices jobServices,
         IOptions<CronnerOptions> options,
+        CronnerInstrumentation instrumentation,
+        CronnerSchedulerDiagnostics diagnostics,
         ILogger<CronnerHostedService> logger)
     {
         _services = services;
@@ -63,6 +67,8 @@ public sealed class CronnerHostedService : BackgroundService
         _hooks = hooks;
         _jobServices = jobServices;
         _options = options.Value;
+        _instrumentation = instrumentation;
+        _diagnostics = diagnostics;
         _logger = logger;
         _jobProvider = services;
     }
@@ -82,6 +88,7 @@ public sealed class CronnerHostedService : BackgroundService
 
         await SeedAsync(cancellationToken).ConfigureAwait(false);
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
+        _diagnostics.MarkStarted();
     }
 
     // The lease-safety rule (see HeartbeatLoopAsync) relies on renewals landing well inside the TTL: a renewal
@@ -242,6 +249,10 @@ public sealed class CronnerHostedService : BackgroundService
                     foreach (var job in due)
                         await writer.WriteAsync(job, stoppingToken).ConfigureAwait(false);
                 }
+
+                // A completed poll — claiming nothing included — is the heartbeat the health check watches:
+                // it proves the loop is still turning, not that there was work to do.
+                _diagnostics.MarkPolled();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -249,6 +260,9 @@ public sealed class CronnerHostedService : BackgroundService
             }
             catch (Exception ex)
             {
+                // The loop is alive; the store is what failed. Recorded separately so a sick store cannot be
+                // mistaken for a wedged scheduler, nor hide behind one.
+                _diagnostics.MarkPollFaulted(ex);
                 _logger.LogError(ex, "DotnetCronner poll loop failed; retrying next tick.");
             }
 
@@ -367,6 +381,7 @@ public sealed class CronnerHostedService : BackgroundService
                 }
 
                 heartbeat = HeartbeatLoopAsync(descriptor, job, jobCts, heartbeatCts.Token, runState, confirmedUntil.Value);
+                _instrumentation.LockAcquired(job);
             }
 
             // The claim happened in the poll loop; announce it as the worker takes the job.
@@ -393,6 +408,9 @@ public sealed class CronnerHostedService : BackgroundService
             var misfired = descriptor.CronString is not null && job.RetryCount == 0 &&
                 DateTimeOffset.UtcNow - dueTime > _options.MisfireThreshold;
             var misfirePolicy = ResolveMisfirePolicy(descriptor);
+
+            if (misfired)
+                _instrumentation.Misfired(job, misfirePolicy);
 
             if (misfired && misfirePolicy is MisfirePolicy.Skip or MisfirePolicy.FireNext)
             {
@@ -470,6 +488,13 @@ public sealed class CronnerHostedService : BackgroundService
             bool cancelledByClient;
             Exception? failure;
             HeartbeatOutcome outcome;
+
+            // The execution span is opened here and becomes the ambient Activity for the whole run, so spans
+            // the job body emits itself (EF Core, HttpClient, …) nest underneath it rather than floating free.
+            using var runActivity = _instrumentation.StartRun(job, runState, _owner);
+            var runDuration = Stopwatch.StartNew();
+            _instrumentation.RunStarted(job, dueTime);
+            _diagnostics.RunStarted(runState.ExecutionId);
             try
             {
                 (cancelledByClient, failure) = await RunWithHooksAsync(descriptor, job, jobCts, runState, stoppingToken).ConfigureAwait(false);
@@ -478,9 +503,16 @@ public sealed class CronnerHostedService : BackgroundService
             {
                 heartbeatCts.Cancel();
                 outcome = await heartbeat.ConfigureAwait(false);
+                _diagnostics.RunFinished(runState.ExecutionId);
             }
 
             var lockLost = outcome == HeartbeatOutcome.LockLost;
+
+            // Recorded before the branches below, every one of which can return early.
+            _instrumentation.RunFinished(
+                job, RunOutcome(cancelledByClient, failure, lockLost), runDuration.Elapsed, failure, runActivity);
+            if (lockLost)
+                _instrumentation.LockLost(job);
 
             // Finalize the history record (terminal status + finish time + error + any consumer data), then trim.
             // A lock-lost run finalizes its OWN row (keyed by its execution id) so it does not linger as Running.
@@ -953,6 +985,7 @@ public sealed class CronnerHostedService : BackgroundService
                 // Reuse the delay already reported to the Fail hook so a jittered policy cannot report one
                 // wait and apply another; recompute only if the run ended without reaching that hook.
                 job.RetryCount++;
+                _instrumentation.RetryScheduled(job);
                 job.NextRunUtc = now + (runState?.RetryDelay ?? retryPolicy.GetDelay(attempt));
                 job.State = CronnerTaskState.Scheduled;
                 return;
@@ -970,6 +1003,13 @@ public sealed class CronnerHostedService : BackgroundService
         job.NextRunUtc = oneOff ? null : _calculator.GetNextOccurrence(descriptor.CronString, scheduleFrom, _options.TimeZone);
         job.State = job.NextRunUtc is not null ? CronnerTaskState.Scheduled : CronnerTaskState.Completed;
     }
+
+    // How the run ended, in the vocabulary the metrics and the span status share.
+    private static string RunOutcome(bool cancelledByClient, Exception? failure, bool lockLost) =>
+        lockLost ? CronnerDiagnostics.Outcomes.LockLost
+        : cancelledByClient ? CronnerDiagnostics.Outcomes.Cancelled
+        : failure is not null ? CronnerDiagnostics.Outcomes.Failed
+        : CronnerDiagnostics.Outcomes.Success;
 
     private static void ReleaseLock(CronnerJob job)
     {

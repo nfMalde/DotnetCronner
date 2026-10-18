@@ -13,7 +13,7 @@ on:
       package:
         description: Package to release
         type: choice
-        options: [abstractions, core, redis, efcore]
+        options: [abstractions, core, redis, efcore, opentelemetry, aspnetcore]
         required: true
       bump:
         description: Version part to bump (ignored if 'version' is set)
@@ -73,6 +73,8 @@ jobs:
       ver_core: ${{ steps.plan.outputs.ver_core }}
       ver_redis: ${{ steps.plan.outputs.ver_redis }}
       ver_efcore: ${{ steps.plan.outputs.ver_efcore }}
+      ver_opentelemetry: ${{ steps.plan.outputs.ver_opentelemetry }}
+      ver_aspnetcore: ${{ steps.plan.outputs.ver_aspnetcore }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,6 +94,8 @@ jobs:
             core)         PROJECT="src/DotnetCronner/DotnetCronner.csproj"; PKGDIR="src/DotnetCronner"; PACKAGE_ID="DotnetCronner" ;;
             redis)        PROJECT="src/DotnetCronner.Stores.Redis/DotnetCronner.Stores.Redis.csproj"; PKGDIR="src/DotnetCronner.Stores.Redis"; PACKAGE_ID="DotnetCronner.Stores.Redis" ;;
             efcore)       PROJECT="src/DotnetCronner.Stores.EntityFrameworkCore/DotnetCronner.Stores.EntityFrameworkCore.csproj"; PKGDIR="src/DotnetCronner.Stores.EntityFrameworkCore"; PACKAGE_ID="DotnetCronner.Stores.EntityFrameworkCore" ;;
+            opentelemetry) PROJECT="src/DotnetCronner.OpenTelemetry/DotnetCronner.OpenTelemetry.csproj"; PKGDIR="src/DotnetCronner.OpenTelemetry"; PACKAGE_ID="DotnetCronner.OpenTelemetry" ;;
+            aspnetcore)   PROJECT="src/DotnetCronner.AspNetCore/DotnetCronner.AspNetCore.csproj"; PKGDIR="src/DotnetCronner.AspNetCore"; PACKAGE_ID="DotnetCronner.AspNetCore" ;;
             *) echo "::error::Unknown package '$KEY'."; exit 1 ;;
           esac
 
@@ -136,6 +140,7 @@ jobs:
             printf '%s' "$v"
           }
           VER_ABS="$(ver_of abstractions)"; VER_CORE="$(ver_of core)"; VER_REDIS="$(ver_of redis)"; VER_EF="$(ver_of efcore)"
+          VER_OTEL="$(ver_of opentelemetry)"; VER_ASPNET="$(ver_of aspnetcore)"
 
           # Optional explicit dependency floors override the last-published-tag lookup — pin deps for a
           # coordinated release so the result never depends on tag timing. 'latest' (the default) or blank
@@ -163,8 +168,9 @@ jobs:
           }
           case "$KEY" in
             core)         check_dep abstractions "$VER_ABS" "$DEP_ABS" "src/DotnetCronner.Abstractions" ;;
-            redis|efcore) check_dep abstractions "$VER_ABS" "$DEP_ABS" "src/DotnetCronner.Abstractions"
+            redis|efcore|aspnetcore) check_dep abstractions "$VER_ABS" "$DEP_ABS" "src/DotnetCronner.Abstractions"
                           check_dep core "$VER_CORE" "$DEP_CORE" "src/DotnetCronner" ;;
+            opentelemetry) check_dep core "$VER_CORE" "$DEP_CORE" "src/DotnetCronner" ;;
           esac
 
           # The package being released takes its computed VERSION.
@@ -173,6 +179,8 @@ jobs:
             core)         VER_CORE="$VERSION" ;;
             redis)        VER_REDIS="$VERSION" ;;
             efcore)       VER_EF="$VERSION" ;;
+            opentelemetry) VER_OTEL="$VERSION" ;;
+            aspnetcore)   VER_ASPNET="$VERSION" ;;
           esac
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -185,13 +193,15 @@ jobs:
           echo "ver_core=$VER_CORE" >> "$GITHUB_OUTPUT"
           echo "ver_redis=$VER_REDIS" >> "$GITHUB_OUTPUT"
           echo "ver_efcore=$VER_EF" >> "$GITHUB_OUTPUT"
+          echo "ver_opentelemetry=$VER_OTEL" >> "$GITHUB_OUTPUT"
+          echo "ver_aspnetcore=$VER_ASPNET" >> "$GITHUB_OUTPUT"
 
           {
             echo "## Release plan"
             echo "- **Package:** \`$KEY\`"
             echo "- **Version:** \`$VERSION\` (prerelease: $PRERELEASE)"
             echo "- **Tag:** \`$TAG\`"
-            echo "- **Dependency versions used:** abstractions \`$VER_ABS\`, core \`$VER_CORE\`, redis \`$VER_REDIS\`, efcore \`$VER_EF\`"
+            echo "- **Dependency versions used:** abstractions \`$VER_ABS\`, core \`$VER_CORE\`, redis \`$VER_REDIS\`, efcore \`$VER_EF\`, opentelemetry \`$VER_OTEL\`, aspnetcore \`$VER_ASPNET\`"
             echo ""
             echo "The NuGet push is gated on the \`release\` environment — approve it to publish."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -284,6 +294,8 @@ jobs:
           CRONNER_VER_CORE: ${{ needs.prepare.outputs.ver_core }}
           CRONNER_VER_REDIS: ${{ needs.prepare.outputs.ver_redis }}
           CRONNER_VER_EFCORE: ${{ needs.prepare.outputs.ver_efcore }}
+          CRONNER_VER_OPENTELEMETRY: ${{ needs.prepare.outputs.ver_opentelemetry }}
+          CRONNER_VER_ASPNETCORE: ${{ needs.prepare.outputs.ver_aspnetcore }}
         run: |
           set -euo pipefail
           # Plain-text notes for this version only → Directory.Build.props reads CRONNER_RELEASE_NOTES.

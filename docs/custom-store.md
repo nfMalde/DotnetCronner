@@ -16,6 +16,9 @@ public interface ICronnerStore
     Task<bool> RenewLockAsync(string id, string owner, DateTimeOffset lockedUntil, CancellationToken ct = default);
     Task<bool> ReleaseLockAsync(string id, string owner, CancellationToken ct = default);   // default impl: read → owner check → Upsert; override it (see §4)
 
+    // Optional (default: one cheap GetByIdAsync for an id no task uses) — liveness for the health check.
+    Task PingAsync(CancellationToken ct = default) => GetByIdAsync(PingProbeId, ct);
+
     // Optional per-run lifecycle (default no-op) — open/close a per-run session if your store needs one.
     Task OnStartAsync(CronnerJob job, CancellationToken ct = default) => Task.CompletedTask;
     Task OnCloseAsync(CronnerJob job, CancellationToken ct = default) => Task.CompletedTask;
@@ -422,6 +425,11 @@ concurrency modes all run unchanged on top of your store.
   `IStoreBackend` for it) before relying on the cross-process guarantee.
 - `OnStartAsync` / `OnCloseAsync` are optional — implement them only for a per-run session, and make sure
   `OnCloseAsync` disposes/commits what `OnStartAsync` opened.
+- `PingAsync` is optional: the default issues one cheap read and treats "answered without throwing" as
+  reachable, which already covers you. Override it when your backend has something more direct (the Redis
+  store sends `PING`, the EF Core store calls `CanConnectAsync`) — and keep it cheap, because a readiness
+  probe may call it every few seconds. It must **throw** when the store is unreachable; returning normally
+  means healthy. See [observability.md](observability.md).
 - Map every `CronnerJob` field (incl. `Kind`, `DefinitionId`, `Payload`, `PayloadType`, `Progress`) so
   nothing is silently dropped across a restart.
 - `PruneCompletedOneOffsAsync` / `UpdateProgressAsync` are optional (default no-ops) — implement them for

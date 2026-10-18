@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -33,6 +34,12 @@ public static class CronnerServiceCollectionExtensions
         services.TryAddSingleton<CronnerScheduleSignal>();
         services.TryAddSingleton<CronnerExecutionTracker>();
         services.TryAddSingleton<CronnerScheduleCalculator>();
+        // Observability. Nothing is collected until an OpenTelemetry (or other) listener subscribes, and the
+        // core package takes no dependency to provide it: IMeterFactory is used when the host already has one
+        // (ASP.NET Core does), and otherwise the instrumentation owns its meter.
+        services.TryAddSingleton<CronnerSchedulerDiagnostics>();
+        services.TryAddSingleton(sp => new CronnerInstrumentation(
+            sp.GetService<IMeterFactory>(), sp.GetRequiredService<CronnerSchedulerDiagnostics>()));
         services.TryAddSingleton<IOptions<CronnerOptions>>(sp => Options.Create(sp.GetRequiredService<CronnerOptions>()));
         // Scoped, not singleton: this follows the ambient scope, so a store configured as
         // CronnerStoreLifetime.Scoped is built per scope with that scope's dependencies. A Singleton

@@ -114,6 +114,20 @@ public sealed class TestAppOptions
     /// <summary>Whether the default retry policy spreads its wait randomly. Only used with a strategy.</summary>
     public bool RetryJitter { get; init; }
 
+    /// <summary>
+    /// Whether to export the scheduler's OpenTelemetry metrics and traces to the console. Off by default —
+    /// the console exporter is chatty, and the point here is that the telemetry exists whether or not
+    /// anything is listening.
+    /// </summary>
+    public bool OpenTelemetryConsole { get; init; }
+
+    /// <summary>
+    /// How long one execution may run before the health check reports Degraded. The harness runs jobs that
+    /// take 8-12s on purpose, so this defaults generously; set CRONNER_STALLED_RUN_SECONDS low to watch
+    /// Degraded appear on GET /health while conc:drop is in flight.
+    /// </summary>
+    public TimeSpan? StalledRunThreshold { get; init; }
+
     /// <summary>StackExchange.Redis connection string.</summary>
     public required string RedisConnection { get; init; }
 
@@ -203,6 +217,10 @@ public sealed class TestAppOptions
                 ["exponential"] = CronnerRetryStrategy.Exponential,
             }),
         RetryJitter = ReadBool(configuration, "CRONNER_RETRY_JITTER", false),
+        OpenTelemetryConsole = ReadBool(configuration, "CRONNER_OTEL_CONSOLE", false),
+        StalledRunThreshold = ReadInt(configuration, "CRONNER_STALLED_RUN_SECONDS", 0) is var stalled and > 0
+            ? TimeSpan.FromSeconds(stalled)
+            : null,
         RedisConnection = ReadString(configuration, "CRONNER_REDIS", "localhost:6379"),
         RedisKeyPrefix = ReadString(configuration, "CRONNER_REDIS_KEY_PREFIX", "cronner:"),
         RedisCacheTtl = ReadInt(configuration, "CRONNER_REDIS_CACHE_TTL_SECONDS", 0) is var ttl && ttl > 0
@@ -251,6 +269,8 @@ public sealed class TestAppOptions
         retryDelay = RetryDelay.ToString(),
         retryStrategy = RetryStrategy.ToString(),
         retryJitter = RetryJitter,
+        openTelemetryConsole = OpenTelemetryConsole,
+        stalledRunThreshold = StalledRunThreshold?.ToString(),
         keepAliveInterval = (KeepAliveInterval ?? TimeSpan.FromMilliseconds(Math.Max(1000, LockTtl.TotalMilliseconds / 2))).ToString(),
         oneOffRetention = OneOffRetention == 0 ? "keep all" : OneOffRetention.ToString(),
         executionHistory = ExecutionHistory == 0 ? "off" : $"keep newest {ExecutionHistory} per task",

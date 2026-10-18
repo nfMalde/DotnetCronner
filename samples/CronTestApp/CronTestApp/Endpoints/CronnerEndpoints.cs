@@ -35,7 +35,9 @@ public static class CronnerEndpoints
                 "GET  /metrics                 — per-task counters, incl. lock events, from the hooks",
                 "GET  /progress                — live progress, rebuilt purely from the progress hooks",
                 "GET  /locks                   — measured keepalive cadence vs. the expected LockTtl/2",
-                "GET  /healthz                 — liveness",
+                "GET  /healthz                 — liveness (this app is up)",
+                "GET  /health                  — readiness: the DotnetCronner health check (scheduler started, polling, store reachable)",
+                "GET  /scheduler               — live scheduler diagnostics (last poll, runs in flight, longest run)",
             },
         }));
 
@@ -158,6 +160,24 @@ public static class CronnerEndpoints
         });
 
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+
+        // Readiness, from DotnetCronner.AspNetCore. Unhealthy = the scheduler is broken and nothing will run;
+        // Degraded = work is still moving but a run has outlived CRONNER_STALLED_RUN_SECONDS.
+        app.MapHealthChecks("/health");
+
+        // The same facts the health check reads, straight off the diagnostics singleton. A LastPollUtc that
+        // stops advancing while IsStarted is true is a wedged poll loop — nothing else here would show it.
+        app.MapGet("/scheduler", (CronnerSchedulerDiagnostics diagnostics) => Results.Ok(new
+        {
+            diagnostics.IsStarted,
+            diagnostics.StartedUtc,
+            diagnostics.LastPollUtc,
+            diagnostics.PollCount,
+            diagnostics.LastPollFaultUtc,
+            diagnostics.LastPollError,
+            diagnostics.RunningCount,
+            diagnostics.LongestRunningDuration,
+        }));
 
         return app;
     }
