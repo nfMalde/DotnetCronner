@@ -1,5 +1,8 @@
 using CronTestApp.Configuration;
 using CronTestApp.Endpoints;
+using DotnetCronner;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 // Load .env before the host is built: docker compose reads the same file for its own services, and this
 // makes `dotnet run` / F5 behave identically. Real environment variables always win.
@@ -12,6 +15,20 @@ var options = TestAppOptions.FromConfiguration(builder.Configuration);
 
 builder.Services.AddOpenApi();
 builder.Services.AddTestAppCronner(options);
+
+// Health checks over the real scheduler state: started, still polling, store reachable (GET /health).
+// A job that THROWS never makes this fail — that is the app's to handle, not grounds for a restart.
+builder.Services.AddHealthChecks()
+    .AddCronner(check => check.StalledRunThreshold = options.StalledRunThreshold, tags: ["ready"]);
+
+// The scheduler publishes metrics and spans on a plain Meter / ActivitySource whether or not anything
+// listens; CRONNER_OTEL_CONSOLE=true attaches the console exporter so you can watch them go by.
+if (options.OpenTelemetryConsole)
+{
+    builder.Services.AddOpenTelemetry()
+        .WithMetrics(metrics => metrics.AddCronnerInstrumentation().AddConsoleExporter())
+        .WithTracing(tracing => tracing.AddCronnerInstrumentation().AddConsoleExporter());
+}
 
 var app = builder.Build();
 

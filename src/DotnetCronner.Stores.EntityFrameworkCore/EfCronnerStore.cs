@@ -23,6 +23,20 @@ public sealed class EfCronnerStore<TContext> : ICronnerStore
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    /// <remarks>
+    /// Uses <c>CanConnectAsync</c> — it opens and closes a connection without touching the Cronner tables,
+    /// so it reports the database being unreachable rather than the schema being absent, and throws with the
+    /// provider's own reason when the connection itself fails.
+    /// </remarks>
+    public async Task PingAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (!await context.Database.CanConnectAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidOperationException("The DotnetCronner EF Core store cannot connect to its database.");
+    }
+
+    /// <inheritdoc />
     public async Task<CronnerJob?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);

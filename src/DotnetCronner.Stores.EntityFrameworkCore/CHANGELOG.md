@@ -6,6 +6,17 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+Released with the suite at 0.2.0 (depends on `DotnetCronner.Abstractions >= 0.2.0` and
+`DotnetCronner >= 0.2.0`). **No migration needed** — the schema is unchanged from 0.1.0.
+
+### Added
+- Implements `PingAsync` with `CanConnectAsync`, which opens and closes a connection without touching the
+  Cronner tables — so it reports the database being unreachable rather than the schema being absent, and
+  surfaces the provider's own reason when the connection fails. Used by the health checks in
+  `DotnetCronner.AspNetCore`.
+
 ## [0.1.0] - 2026-09-20
 
 Released with the suite at 0.1.0 (depends on `DotnetCronner.Abstractions >= 0.1.0` and

@@ -27,6 +27,8 @@
     <ProjectReference Include="..\..\src\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\DotnetCronner.Stores.Redis\DotnetCronner.Stores.Redis.csproj" />
     <ProjectReference Include="..\..\src\DotnetCronner.Stores.EntityFrameworkCore\DotnetCronner.Stores.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCronner.AspNetCore\DotnetCronner.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCronner.OpenTelemetry\DotnetCronner.OpenTelemetry.csproj" />
     <!-- Referenced as a library (not an analyzer) so the cron validator can be unit-tested directly. -->
     <ProjectReference Include="..\..\src\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj" />
   </ItemGroup>

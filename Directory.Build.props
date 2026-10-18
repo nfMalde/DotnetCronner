@@ -52,6 +52,8 @@
     <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner'">$(CRONNER_VER_CORE)</_CronnerVersion>
     <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.Stores.Redis'">$(CRONNER_VER_REDIS)</_CronnerVersion>
     <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.Stores.EntityFrameworkCore'">$(CRONNER_VER_EFCORE)</_CronnerVersion>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.OpenTelemetry'">$(CRONNER_VER_OPENTELEMETRY)</_CronnerVersion>
+    <_CronnerVersion Condition="'$(MSBuildProjectName)' == 'DotnetCronner.AspNetCore'">$(CRONNER_VER_ASPNETCORE)</_CronnerVersion>
     <Version Condition="'$(_CronnerVersion)' != ''">$(_CronnerVersion)</Version>
     <Version Condition="'$(_CronnerVersion)' == ''">0.0.0</Version>
     <PackageVersion>$(Version)</PackageVersion>

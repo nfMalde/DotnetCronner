@@ -47,6 +47,8 @@ Each package is versioned and released independently.
 | [DotnetCronner.Abstractions](https://www.nuget.org/packages/DotnetCronner.Abstractions) | ![NuGet](https://img.shields.io/nuget/v/DotnetCronner.Abstractions?style=flat-square) | ![Downloads](https://img.shields.io/nuget/dt/DotnetCronner.Abstractions?style=flat-square) | Interfaces, models, `[CronnerTask]` attribute |
 | [DotnetCronner.Stores.Redis](https://www.nuget.org/packages/DotnetCronner.Stores.Redis) | ![NuGet](https://img.shields.io/nuget/v/DotnetCronner.Stores.Redis?style=flat-square) | ![Downloads](https://img.shields.io/nuget/dt/DotnetCronner.Stores.Redis?style=flat-square) | Redis store and second-level cache |
 | [DotnetCronner.Stores.EntityFrameworkCore](https://www.nuget.org/packages/DotnetCronner.Stores.EntityFrameworkCore) | ![NuGet](https://img.shields.io/nuget/v/DotnetCronner.Stores.EntityFrameworkCore?style=flat-square) | ![Downloads](https://img.shields.io/nuget/dt/DotnetCronner.Stores.EntityFrameworkCore?style=flat-square) | Entity Framework Core store |
+| [DotnetCronner.OpenTelemetry](https://www.nuget.org/packages/DotnetCronner.OpenTelemetry) | ![NuGet](https://img.shields.io/nuget/v/DotnetCronner.OpenTelemetry?style=flat-square) | ![Downloads](https://img.shields.io/nuget/dt/DotnetCronner.OpenTelemetry?style=flat-square) | One-call OpenTelemetry metrics + traces registration |
+| [DotnetCronner.AspNetCore](https://www.nuget.org/packages/DotnetCronner.AspNetCore) | ![NuGet](https://img.shields.io/nuget/v/DotnetCronner.AspNetCore?style=flat-square) | ![Downloads](https://img.shields.io/nuget/dt/DotnetCronner.AspNetCore?style=flat-square) | ASP.NET Core health checks |
 
 ## Requirements
 
@@ -71,6 +73,14 @@ Add a store package only if you need durable or distributed persistence:
 ```bash
 dotnet add package DotnetCronner.Stores.Redis
 dotnet add package DotnetCronner.Stores.EntityFrameworkCore
+```
+
+Observability is built in — the scheduler publishes metrics and traces on a plain `Meter` and
+`ActivitySource` with no extra package. These two only add convenience on top:
+
+```bash
+dotnet add package DotnetCronner.OpenTelemetry   # AddCronnerInstrumentation()
+dotnet add package DotnetCronner.AspNetCore      # AddHealthChecks().AddCronner()
 ```
 
 ## Enable it
@@ -565,6 +575,46 @@ own row as `Cancelled` with `Error = CronnerExecutionErrors.LockLost`. Two resid
 never runs again keeps its last `Running` row (there is no startup sweep, because on a multi-instance
 deployment another node may legitimately be running the task right then).
 
+### Observability
+
+The scheduler publishes metrics and traces on a base-class-library `Meter` and `ActivitySource`, both
+named `DotnetCronner`. **The core package takes no dependency on OpenTelemetry to do it**, and nothing is
+collected — or costs anything — until something subscribes.
+
+```csharp
+services.AddOpenTelemetry()
+    .WithMetrics(m => m.AddCronnerInstrumentation())    // DotnetCronner.OpenTelemetry
+    .WithTracing(t => t.AddCronnerInstrumentation());
+```
+
+That package is pure convenience; `AddMeter(CronnerDiagnostics.MeterName)` and
+`AddSource(CronnerDiagnostics.ActivitySourceName)` do exactly the same thing with no extra reference.
+
+**Metrics:** executions started / completed / failed / cancelled, `cronner.jobs.duration`,
+`cronner.jobs.scheduling.delay` (how late a run started against its due time — the one to alert on),
+retries, misfires, locks acquired / lost, and `cronner.jobs.running`. Every metric is tagged with the
+task id and nothing else of unbounded cardinality — what a job *processes* never becomes a tag.
+
+**Tracing:** one span per execution attempt, which is the ambient activity while the job body runs, so the
+job's own spans (EF Core, HttpClient) nest underneath it instead of floating free. A retry is a separate
+execution and therefore a separate span.
+
+**Health checks**, from `DotnetCronner.AspNetCore`:
+
+```csharp
+services.AddHealthChecks().AddCronner();
+```
+
+It reports `Unhealthy` when the scheduler has not started, has stopped polling for due work, or cannot
+reach its store; and optionally `Degraded` when a single run exceeds `StalledRunThreshold`. **A failing
+job never makes the application unhealthy** — that is yours to handle via `OnFail` or the
+`cronner.jobs.failed` metric, not a reason to have an orchestrator restart the process.
+
+`CronnerSchedulerDiagnostics` is also resolvable directly (started, last poll, running count, longest
+run) if you would rather surface the same facts on your own admin page. Full details — every instrument,
+every tag, suggested histogram buckets, and the store-reachability contract — are in
+**[docs/observability.md](docs/observability.md)**.
+
 ### Execution semantics
 
 - **`OnFail` fires per attempt, not per run.** Under a retry policy with more than one attempt, each failed
@@ -666,7 +716,9 @@ Two runnable samples live in [`samples/`](samples):
 - **`DotnetCronner.Sample.WebApi`** — a minimal quickstart: attribute + lambda tasks, execution history
   (with the job's summary on the history row, augmented by a hook via `TryGetExecutionData`, keyed by
   `ExecutionId`), and a progress job whose reports carry custom payloads, over a handful of
-  `ICronnerClient` endpoints (`/tasks`, `/tasks/{id}/history`, `/progress`).
+  `ICronnerClient` endpoints (`/tasks`, `/tasks/{id}/history`, `/progress`) — plus the full observability
+  wiring: OpenTelemetry metrics and traces to the console exporter, `/health`, and `/scheduler` exposing the
+  diagnostics singleton directly.
 - **[`CronTestApp`](samples/CronTestApp)** — a full harness that exercises every feature (all store modes
   incl. two hand-written stores that implement the full lock contract, all twelve hooks in every
   registration style, progress, the keepalive, lock loss and the lease rule live via a renewal-outage

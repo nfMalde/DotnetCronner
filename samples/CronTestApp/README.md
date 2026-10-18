@@ -73,6 +73,8 @@ docker compose up -d --force-recreate crontestapp
 | `CRONNER_MAX_RETRIES` / `CRONNER_RETRY_DELAY_SECONDS` | e.g. `2` / `5` | `DefaultMaxRetries` / `RetryDelay` — the shorthand, used while no retry policy is set |
 | `CRONNER_RETRY_STRATEGY` | *(unset)*, `immediate`, `fixed`, `exponential` | When set, builds `CronnerOptions.DefaultRetryPolicy` from it instead (`MaxAttempts = CRONNER_MAX_RETRIES + 1`, base delay `CRONNER_RETRY_DELAY_SECONDS`) |
 | `CRONNER_RETRY_JITTER` | `true` / `false` (default) | Spreads the default policy's wait over `[delay/2, delay]`. Only used with a strategy |
+| `CRONNER_OTEL_CONSOLE` | `true` / `false` (default) | Attaches the OpenTelemetry **console exporter** to the scheduler's metrics and traces (`AddCronnerInstrumentation()`). The telemetry is published either way — this only decides whether anything listens |
+| `CRONNER_STALLED_RUN_SECONDS` | e.g. `5`, `0` (default, off) | `CronnerHealthCheckOptions.StalledRunThreshold` — a run outliving it makes `GET /health` report **Degraded** |
 | `CRONNER_SLOW_KEEPALIVE_MS` | `0` (off), e.g. `15000` | makes the global `OnKeepAlive` hook block — proves a slow hook cannot stretch the renewal cadence |
 | `CRONNER_REDIS`, `CRONNER_REDIS_KEY_PREFIX`, `CRONNER_REDIS_CACHE_TTL_SECONDS` | | Redis store & cache options |
 | `CRONNER_POSTGRES` | Npgsql connection string | EF Core stores |
@@ -133,7 +135,9 @@ There is no bundled dashboard, so everything goes through `ICronnerClient` on th
 | `GET /metrics` | per-task counters incl. lock events, filled exclusively by the hooks |
 | `GET /progress` | live total/scope progress, rebuilt purely from the progress hooks |
 | `GET /locks` | **measured** keepalive cadence per task vs. the expected `LockTtl`/2 |
-| `GET /healthz` | liveness |
+| `GET /healthz` | liveness — this app is up |
+| `GET /health` | readiness — the real DotnetCronner health check (scheduler started, still polling, store reachable); `Degraded` when a run outlives `CRONNER_STALLED_RUN_SECONDS` |
+| `GET /scheduler` | live scheduler diagnostics: last poll, polls completed, runs in flight, longest run |
 
 `/activity` is the fastest way to see behaviour; `/metrics` and `/progress` prove the hooks ran, since
 nothing else writes to them.

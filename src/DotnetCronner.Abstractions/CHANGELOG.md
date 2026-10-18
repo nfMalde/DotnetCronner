@@ -6,6 +6,21 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+Released with the suite at 0.2.0. Adds the store-liveness probe the new health checks build on —
+see [docs/observability.md](../../docs/observability.md).
+
+### Added
+- `ICronnerStore.PingAsync(CancellationToken)` — checks that the backing store is reachable; it throws when
+  it is not, and returning normally means healthy. Added as a **default interface method**, so every
+  existing custom store keeps compiling and already has a working probe: the default issues one cheap
+  `GetByIdAsync` for `ICronnerStore.PingProbeId`, an id no real task uses, and treats "answered without
+  throwing" as reachable. Override it when your backend offers something more direct.
+- `ICronnerStore.PingProbeId` — the id that default probe reads.
+
+No breaking change: both additions are new surface with working defaults.
+
 ## [0.1.0] - 2026-09-20
 
 Released with the suite at 0.1.0. Carries the retry-policy model the scheduler now runs on —

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner\DotnetCronner.csproj" />
+  </ItemGroup>
+
+  <!-- OpenTelemetry.Api only, not the SDK: this package registers DotnetCronner's meter and activity source
+       with whatever provider the application already builds, and must not drag a second SDK in behind it. -->
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Api" Version="1.20.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner.OpenTelemetry</PackageId>
+    <Description>OpenTelemetry instrumentation for DotnetCronner: registers the scheduler's metrics and traces with a single AddCronnerInstrumentation() call.</Description>
+  </PropertyGroup>
+
+</Project>

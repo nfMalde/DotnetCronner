@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCronner\DotnetCronner.csproj" />
+    <ProjectReference Include="..\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
+  </ItemGroup>
+
+  <!-- IHealthCheck / HealthCheckResult come from the Abstractions package, but IHealthChecksBuilder and
+       AddCheck<T> live in this one, so registering a check needs it. Its own dependencies are the
+       Microsoft.Extensions pieces the scheduler already pulls in. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>DotnetCronner.AspNetCore</PackageId>
+    <Description>ASP.NET Core integration for DotnetCronner: health checks reporting whether the scheduler started, is still processing due work, and can reach its store.</Description>
+  </PropertyGroup>
+
+</Project>

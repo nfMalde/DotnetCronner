@@ -128,6 +128,27 @@ public interface ICronnerStore
     }
 
     /// <summary>
+    /// The task id the default <see cref="PingAsync"/> probes for. It is never a real task — the point is
+    /// that the backend answers at all, not what it answers.
+    /// </summary>
+    const string PingProbeId = "__cronner_ping__";
+
+    /// <summary>
+    /// Checks that the backing store is reachable. Throws when it is not; returning normally means the store
+    /// answered. Used by the health checks in <c>DotnetCronner.AspNetCore</c>, and safe to call from your own
+    /// readiness probe.
+    /// </summary>
+    /// <remarks>
+    /// The default implementation issues one cheap read — <see cref="GetByIdAsync"/> for
+    /// <see cref="PingProbeId"/>, an id no real task uses — and treats "answered without throwing" as
+    /// reachable, so every store is covered without implementing anything. Override it when your backend
+    /// offers something cheaper or more direct (the Redis store sends <c>PING</c>; the EF Core store calls
+    /// <c>CanConnectAsync</c>). Keep an override cheap: a health probe may run every few seconds.
+    /// </remarks>
+    Task PingAsync(CancellationToken cancellationToken = default) =>
+        GetByIdAsync(PingProbeId, cancellationToken);
+
+    /// <summary>
     /// Called once at the very start of a job run, before any other store call for that run. Use it to
     /// open a per-run session / unit of work / DI scope (each run gets its own). Runs for a given task id
     /// do not overlap by default, so a store may key per-run state by <see cref="CronnerJob.Id"/>. The
