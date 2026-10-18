@@ -15,8 +15,15 @@ public class MisfireTests
     }
 
     // Hourly cron with a NextRunUtc several hours in the past: the missed window contains an exact number of
-    // occurrences (one per hour) and the NEXT future occurrence is up to an hour away, so no normal tick fires
-    // during the short test — the run count reflects only the misfire policy.
+    // occurrences (one per hour), so the run count reflects only the misfire policy.
+    //
+    // The minute is pinned ~30 minutes ahead of the current one rather than to 0, and that is load-bearing.
+    // SettleAsync waits for a NextRunUtc more than a minute out; with minute 0 that condition is unmet in the
+    // last seconds before an hour boundary, so the loop sits through the boundary and counts the regular tick
+    // as if it were a catch-up. Offsetting the minute keeps the next occurrence ~half an hour away whatever
+    // the wall clock says, so no normal tick can fire during the test.
+    private static readonly string Cron = $"{(DateTimeOffset.UtcNow.Minute + 30) % 60} * * * *";
+
     private static IHost Build(Counter counter, InMemoryCronnerStore store, MisfirePolicy policy, Action<CronnerOptions>? extra = null) =>
         new HostBuilder()
             .ConfigureServices(services =>
@@ -35,7 +42,7 @@ public class MisfireTests
                     cronner.UseStore<InMemoryCronnerStore>();
                     cronner.Sched<TickJob>(
                         x => x.Run(x.HasParam<CancellationToken>()),
-                        o => o.WithCron("0 * * * *").WithId("tick").WithMisfirePolicy(policy));
+                        o => o.WithCron(Cron).WithId("tick").WithMisfirePolicy(policy));
                 });
             })
             .Build();
@@ -47,7 +54,7 @@ public class MisfireTests
         {
             Id = "tick",
             Name = "tick",
-            CronExpression = "0 * * * *",
+            CronExpression = Cron,
             NextRunUtc = DateTimeOffset.UtcNow - staleBy,
             State = CronnerTaskState.Scheduled,
         });
