@@ -1,7 +1,7 @@
 namespace DotnetCronner;
 
 /// <summary>How a task method parameter is supplied when the task runs.</summary>
-public enum CronnerArgumentKind
+internal enum CronnerArgumentKind
 {
     /// <summary>Resolved from the scoped <see cref="IServiceProvider"/>.</summary>
     Service,
@@ -17,7 +17,7 @@ public enum CronnerArgumentKind
 }
 
 /// <summary>Describes a single argument passed to a task method at execution time.</summary>
-public sealed class CronnerArgument
+internal sealed class CronnerArgument
 {
     private CronnerArgument(CronnerArgumentKind kind, Type type, object? value, Func<IServiceProvider, object?>? factory)
     {

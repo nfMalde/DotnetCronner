@@ -14,7 +14,7 @@ namespace DotnetCronner;
 /// and keeps the store out of <c>WithDedicatedDI</c>'s isolated job container, where its own
 /// dependencies would not be resolvable.</para>
 /// </summary>
-public sealed class CronnerStoreHolder
+internal sealed class CronnerStoreHolder
 {
     private readonly object _gate = new();
     private Func<IServiceProvider, ICronnerStore> _storeFactory = _ => new InMemoryCronnerStore();
@@ -99,13 +99,6 @@ public sealed class CronnerStoreHolder
             return _singleton;
         }
     }
-
-    /// <summary>
-    /// Obsolete alias for <see cref="Resolve"/>. Kept so existing callers keep compiling; it always
-    /// behaved as a singleton, which is still what <see cref="CronnerStoreLifetime.Singleton"/> does.
-    /// </summary>
-    [Obsolete("Use Resolve(IServiceProvider). Build() cannot honour a scoped store lifetime.")]
-    public ICronnerStore Build(IServiceProvider services) => Resolve(services);
 
     /// <summary>
     /// Wraps the store in the second-level cache when one is configured.

@@ -1,0 +1,252 @@
+#nullable enable
+const DotnetCronner.CronnerExecutionErrors.LockLost = "Execution lock lost; the run was abandoned to prevent a concurrent execution." -> string!
+const DotnetCronner.CronnerExecutionErrors.Orphaned = "Orphaned: the owning scheduler instance never finalized this run (crash or lost lease)." -> string!
+const DotnetCronner.ICronnerStore.PingProbeId = "__cronner_ping__" -> string!
+DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerConcurrencyMode.Concurrent = 2 -> DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerConcurrencyMode.DropAndForget = 0 -> DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerConcurrencyMode.Queue = 1 -> DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerExecutionErrors
+DotnetCronner.CronnerJob
+DotnetCronner.CronnerJob.Clone() -> DotnetCronner.CronnerJob!
+DotnetCronner.CronnerJob.CreatedUtc.get -> System.DateTimeOffset
+DotnetCronner.CronnerJob.CreatedUtc.set -> void
+DotnetCronner.CronnerJob.CronExpression.get -> string?
+DotnetCronner.CronnerJob.CronExpression.set -> void
+DotnetCronner.CronnerJob.CronnerJob() -> void
+DotnetCronner.CronnerJob.DefinitionId.get -> string?
+DotnetCronner.CronnerJob.DefinitionId.set -> void
+DotnetCronner.CronnerJob.Id.get -> string!
+DotnetCronner.CronnerJob.Id.set -> void
+DotnetCronner.CronnerJob.Kind.get -> DotnetCronner.CronnerJobKind
+DotnetCronner.CronnerJob.Kind.set -> void
+DotnetCronner.CronnerJob.LastError.get -> string?
+DotnetCronner.CronnerJob.LastError.set -> void
+DotnetCronner.CronnerJob.LastRunUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerJob.LastRunUtc.set -> void
+DotnetCronner.CronnerJob.LockedUntilUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerJob.LockedUntilUtc.set -> void
+DotnetCronner.CronnerJob.LockOwner.get -> string?
+DotnetCronner.CronnerJob.LockOwner.set -> void
+DotnetCronner.CronnerJob.Name.get -> string!
+DotnetCronner.CronnerJob.Name.set -> void
+DotnetCronner.CronnerJob.NextRunUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerJob.NextRunUtc.set -> void
+DotnetCronner.CronnerJob.Payload.get -> string?
+DotnetCronner.CronnerJob.Payload.set -> void
+DotnetCronner.CronnerJob.PayloadType.get -> string?
+DotnetCronner.CronnerJob.PayloadType.set -> void
+DotnetCronner.CronnerJob.Priority.get -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerJob.Priority.set -> void
+DotnetCronner.CronnerJob.Progress.get -> decimal
+DotnetCronner.CronnerJob.Progress.set -> void
+DotnetCronner.CronnerJob.RetryCount.get -> int
+DotnetCronner.CronnerJob.RetryCount.set -> void
+DotnetCronner.CronnerJob.RunCount.get -> int
+DotnetCronner.CronnerJob.RunCount.set -> void
+DotnetCronner.CronnerJob.State.get -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerJob.State.set -> void
+DotnetCronner.CronnerJob.UpdatedUtc.get -> System.DateTimeOffset
+DotnetCronner.CronnerJob.UpdatedUtc.set -> void
+DotnetCronner.CronnerJobEntity
+DotnetCronner.CronnerJobEntity.CronnerJobEntity() -> void
+DotnetCronner.CronnerJobExecution
+DotnetCronner.CronnerJobExecution.Attempt.get -> int
+DotnetCronner.CronnerJobExecution.Attempt.set -> void
+DotnetCronner.CronnerJobExecution.Clone() -> DotnetCronner.CronnerJobExecution!
+DotnetCronner.CronnerJobExecution.CronnerJobExecution() -> void
+DotnetCronner.CronnerJobExecution.Data.get -> string?
+DotnetCronner.CronnerJobExecution.Data.set -> void
+DotnetCronner.CronnerJobExecution.Duration.get -> System.TimeSpan?
+DotnetCronner.CronnerJobExecution.Error.get -> string?
+DotnetCronner.CronnerJobExecution.Error.set -> void
+DotnetCronner.CronnerJobExecution.FinishedAt.get -> System.DateTimeOffset?
+DotnetCronner.CronnerJobExecution.FinishedAt.set -> void
+DotnetCronner.CronnerJobExecution.Id.get -> string!
+DotnetCronner.CronnerJobExecution.Id.set -> void
+DotnetCronner.CronnerJobExecution.JobId.get -> string!
+DotnetCronner.CronnerJobExecution.JobId.set -> void
+DotnetCronner.CronnerJobExecution.Owner.get -> string?
+DotnetCronner.CronnerJobExecution.Owner.set -> void
+DotnetCronner.CronnerJobExecution.StartedAt.get -> System.DateTimeOffset
+DotnetCronner.CronnerJobExecution.StartedAt.set -> void
+DotnetCronner.CronnerJobExecution.Status.get -> DotnetCronner.JobExecutionStatus
+DotnetCronner.CronnerJobExecution.Status.set -> void
+DotnetCronner.CronnerJobKind
+DotnetCronner.CronnerJobKind.OneOff = 1 -> DotnetCronner.CronnerJobKind
+DotnetCronner.CronnerJobKind.Recurring = 0 -> DotnetCronner.CronnerJobKind
+DotnetCronner.CronnerRegisteredTask
+DotnetCronner.CronnerRegisteredTask.Concurrency.get -> DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerRegisteredTask.Concurrency.init -> void
+DotnetCronner.CronnerRegisteredTask.CronExpression.get -> string?
+DotnetCronner.CronnerRegisteredTask.CronExpression.init -> void
+DotnetCronner.CronnerRegisteredTask.CronnerRegisteredTask() -> void
+DotnetCronner.CronnerRegisteredTask.Description.get -> string?
+DotnetCronner.CronnerRegisteredTask.Description.init -> void
+DotnetCronner.CronnerRegisteredTask.Id.get -> string!
+DotnetCronner.CronnerRegisteredTask.Id.init -> void
+DotnetCronner.CronnerRegisteredTask.IsManual.get -> bool
+DotnetCronner.CronnerRegisteredTask.IsManual.init -> void
+DotnetCronner.CronnerRegisteredTask.Name.get -> string!
+DotnetCronner.CronnerRegisteredTask.Name.init -> void
+DotnetCronner.CronnerRegisteredTask.Priority.get -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerRegisteredTask.Priority.init -> void
+DotnetCronner.CronnerRetryPolicy
+DotnetCronner.CronnerRetryPolicy.AllowsRetry(int failedAttempt) -> bool
+DotnetCronner.CronnerRetryPolicy.CronnerRetryPolicy(int maxAttempts, DotnetCronner.CronnerRetryStrategy strategy = DotnetCronner.CronnerRetryStrategy.Default, System.TimeSpan delay = default(System.TimeSpan), System.TimeSpan? maxDelay = null, bool jitter = false) -> void
+DotnetCronner.CronnerRetryPolicy.Delay.get -> System.TimeSpan
+DotnetCronner.CronnerRetryPolicy.GetDelay(int failedAttempt) -> System.TimeSpan
+DotnetCronner.CronnerRetryPolicy.Jitter.get -> bool
+DotnetCronner.CronnerRetryPolicy.MaxAttempts.get -> int
+DotnetCronner.CronnerRetryPolicy.MaxDelay.get -> System.TimeSpan
+DotnetCronner.CronnerRetryPolicy.Strategy.get -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerRetryStrategy.Default = 0 -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerRetryStrategy.Exponential = 3 -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerRetryStrategy.Fixed = 2 -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerRetryStrategy.Immediate = 1 -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerStoreLifetime
+DotnetCronner.CronnerStoreLifetime.Scoped = 1 -> DotnetCronner.CronnerStoreLifetime
+DotnetCronner.CronnerStoreLifetime.Singleton = 0 -> DotnetCronner.CronnerStoreLifetime
+DotnetCronner.CronnerTaskAttribute
+DotnetCronner.CronnerTaskAttribute.Concurrency.get -> DotnetCronner.CronnerConcurrencyMode
+DotnetCronner.CronnerTaskAttribute.Concurrency.set -> void
+DotnetCronner.CronnerTaskAttribute.CronnerTaskAttribute(string? id = null, string? cronstring = null) -> void
+DotnetCronner.CronnerTaskAttribute.CronString.get -> string?
+DotnetCronner.CronnerTaskAttribute.Description.get -> string?
+DotnetCronner.CronnerTaskAttribute.Description.set -> void
+DotnetCronner.CronnerTaskAttribute.Id.get -> string?
+DotnetCronner.CronnerTaskAttribute.MaxAttempts.get -> int
+DotnetCronner.CronnerTaskAttribute.MaxAttempts.set -> void
+DotnetCronner.CronnerTaskAttribute.MisfirePolicy.get -> DotnetCronner.MisfirePolicy
+DotnetCronner.CronnerTaskAttribute.MisfirePolicy.set -> void
+DotnetCronner.CronnerTaskAttribute.Priority.get -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskAttribute.Priority.set -> void
+DotnetCronner.CronnerTaskAttribute.RetryDelaySeconds.get -> double
+DotnetCronner.CronnerTaskAttribute.RetryDelaySeconds.set -> void
+DotnetCronner.CronnerTaskAttribute.RetryJitter.get -> bool
+DotnetCronner.CronnerTaskAttribute.RetryJitter.set -> void
+DotnetCronner.CronnerTaskAttribute.RetryMaxDelaySeconds.get -> double
+DotnetCronner.CronnerTaskAttribute.RetryMaxDelaySeconds.set -> void
+DotnetCronner.CronnerTaskAttribute.RetryStrategy.get -> DotnetCronner.CronnerRetryStrategy
+DotnetCronner.CronnerTaskAttribute.RetryStrategy.set -> void
+DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskPriority.Critical = 3 -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskPriority.High = 2 -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskPriority.Low = 0 -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskPriority.Normal = 1 -> DotnetCronner.CronnerTaskPriority
+DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Cancelled = 6 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Completed = 4 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Failed = 5 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Idle = 0 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Queued = 2 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Running = 3 -> DotnetCronner.CronnerTaskState
+DotnetCronner.CronnerTaskState.Scheduled = 1 -> DotnetCronner.CronnerTaskState
+DotnetCronner.ICronnerCacheProvider
+DotnetCronner.ICronnerCacheProvider.GetAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.ICronnerCacheProvider.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerCacheProvider.SetAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerClient
+DotnetCronner.ICronnerClient.CancelTaskAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerClient.EnqueueAsync<TPayload>(string! taskId, TPayload payload, DotnetCronner.CronnerTaskPriority priority = DotnetCronner.CronnerTaskPriority.Normal, System.DateTimeOffset? runAt = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
+DotnetCronner.ICronnerClient.GetExecutionsAsync(string! taskId, int limit = 50, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.ICronnerClient.GetRegisteredTasks() -> System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerRegisteredTask!>!
+DotnetCronner.ICronnerClient.GetTaskByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.ICronnerClient.GetTasksAsync(DotnetCronner.CronnerTaskState? state = null, int offset = 0, int limit = 50, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.ICronnerClient.ScheduleTaskAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerClient.TriggerNowAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore
+DotnetCronner.ICronnerStore.AcquireDueAsync(System.DateTimeOffset now, string! owner, System.TimeSpan lockTtl, int max, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.ICronnerStore.FinalizeOrphanedExecutionsAsync(string! jobId, System.DateTimeOffset finishedAt, string! error, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+DotnetCronner.ICronnerStore.GetAsync(DotnetCronner.CronnerTaskState? state, int offset, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.ICronnerStore.GetByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.ICronnerStore.GetExecutionsAsync(string! jobId, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.ICronnerStore.OnCloseAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.OnStartAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.PingAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.PruneCompletedOneOffsAsync(string! definitionId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.PruneExecutionsAsync(string! jobId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.RecordExecutionFinishedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.RecordExecutionStartedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.ReleaseLockAsync(string! id, string! owner, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.ICronnerStore.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.RenewLockAsync(string! id, string! owner, System.DateTimeOffset lockedUntil, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.ICronnerStore.UpdateProgressAsync(string! id, decimal progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerStore.UpsertAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.JobExecutionEntity
+DotnetCronner.JobExecutionEntity.JobExecutionEntity() -> void
+DotnetCronner.JobExecutionEntity.ToDomain(string! id, string! jobId) -> DotnetCronner.CronnerJobExecution!
+DotnetCronner.JobExecutionStatus
+DotnetCronner.JobExecutionStatus.Cancelled = 3 -> DotnetCronner.JobExecutionStatus
+DotnetCronner.JobExecutionStatus.Failed = 2 -> DotnetCronner.JobExecutionStatus
+DotnetCronner.JobExecutionStatus.Running = 0 -> DotnetCronner.JobExecutionStatus
+DotnetCronner.JobExecutionStatus.Succeeded = 1 -> DotnetCronner.JobExecutionStatus
+DotnetCronner.MisfirePolicy
+DotnetCronner.MisfirePolicy.Default = 0 -> DotnetCronner.MisfirePolicy
+DotnetCronner.MisfirePolicy.FireAll = 3 -> DotnetCronner.MisfirePolicy
+DotnetCronner.MisfirePolicy.FireNext = 4 -> DotnetCronner.MisfirePolicy
+DotnetCronner.MisfirePolicy.FireOnce = 1 -> DotnetCronner.MisfirePolicy
+DotnetCronner.MisfirePolicy.Skip = 2 -> DotnetCronner.MisfirePolicy
+static DotnetCronner.CronnerJobEntity.From(DotnetCronner.CronnerJob! job) -> DotnetCronner.CronnerJobEntity!
+static DotnetCronner.CronnerRetryPolicy.ExponentialBackoff(int maxAttempts, System.TimeSpan delay, System.TimeSpan? maxDelay = null, bool jitter = false) -> DotnetCronner.CronnerRetryPolicy!
+static DotnetCronner.CronnerRetryPolicy.FixedDelay(int maxAttempts, System.TimeSpan delay, bool jitter = false) -> DotnetCronner.CronnerRetryPolicy!
+static DotnetCronner.CronnerRetryPolicy.FromTaskAttribute(string! taskId, DotnetCronner.CronnerTaskAttribute! attribute) -> DotnetCronner.CronnerRetryPolicy?
+static DotnetCronner.CronnerRetryPolicy.Immediate(int maxAttempts) -> DotnetCronner.CronnerRetryPolicy!
+static DotnetCronner.CronnerRetryPolicy.None.get -> DotnetCronner.CronnerRetryPolicy!
+static readonly DotnetCronner.CronnerRetryPolicy.DefaultMaxDelay -> System.TimeSpan
+virtual DotnetCronner.CronnerJobEntity.Apply(DotnetCronner.CronnerJob! job) -> void
+virtual DotnetCronner.CronnerJobEntity.CreatedUtc.get -> System.DateTimeOffset
+virtual DotnetCronner.CronnerJobEntity.CreatedUtc.set -> void
+virtual DotnetCronner.CronnerJobEntity.CronExpression.get -> string?
+virtual DotnetCronner.CronnerJobEntity.CronExpression.set -> void
+virtual DotnetCronner.CronnerJobEntity.DefinitionId.get -> string?
+virtual DotnetCronner.CronnerJobEntity.DefinitionId.set -> void
+virtual DotnetCronner.CronnerJobEntity.Kind.get -> DotnetCronner.CronnerJobKind
+virtual DotnetCronner.CronnerJobEntity.Kind.set -> void
+virtual DotnetCronner.CronnerJobEntity.LastError.get -> string?
+virtual DotnetCronner.CronnerJobEntity.LastError.set -> void
+virtual DotnetCronner.CronnerJobEntity.LastRunUtc.get -> System.DateTimeOffset?
+virtual DotnetCronner.CronnerJobEntity.LastRunUtc.set -> void
+virtual DotnetCronner.CronnerJobEntity.LockedUntilUtc.get -> System.DateTimeOffset?
+virtual DotnetCronner.CronnerJobEntity.LockedUntilUtc.set -> void
+virtual DotnetCronner.CronnerJobEntity.LockOwner.get -> string?
+virtual DotnetCronner.CronnerJobEntity.LockOwner.set -> void
+virtual DotnetCronner.CronnerJobEntity.Name.get -> string!
+virtual DotnetCronner.CronnerJobEntity.Name.set -> void
+virtual DotnetCronner.CronnerJobEntity.NextRunUtc.get -> System.DateTimeOffset?
+virtual DotnetCronner.CronnerJobEntity.NextRunUtc.set -> void
+virtual DotnetCronner.CronnerJobEntity.Payload.get -> string?
+virtual DotnetCronner.CronnerJobEntity.Payload.set -> void
+virtual DotnetCronner.CronnerJobEntity.PayloadType.get -> string?
+virtual DotnetCronner.CronnerJobEntity.PayloadType.set -> void
+virtual DotnetCronner.CronnerJobEntity.Priority.get -> DotnetCronner.CronnerTaskPriority
+virtual DotnetCronner.CronnerJobEntity.Priority.set -> void
+virtual DotnetCronner.CronnerJobEntity.Progress.get -> decimal
+virtual DotnetCronner.CronnerJobEntity.Progress.set -> void
+virtual DotnetCronner.CronnerJobEntity.RetryCount.get -> int
+virtual DotnetCronner.CronnerJobEntity.RetryCount.set -> void
+virtual DotnetCronner.CronnerJobEntity.RunCount.get -> int
+virtual DotnetCronner.CronnerJobEntity.RunCount.set -> void
+virtual DotnetCronner.CronnerJobEntity.State.get -> DotnetCronner.CronnerTaskState
+virtual DotnetCronner.CronnerJobEntity.State.set -> void
+virtual DotnetCronner.CronnerJobEntity.TaskId.get -> string!
+virtual DotnetCronner.CronnerJobEntity.TaskId.set -> void
+virtual DotnetCronner.CronnerJobEntity.ToDomain() -> DotnetCronner.CronnerJob!
+virtual DotnetCronner.CronnerJobEntity.UpdatedUtc.get -> System.DateTimeOffset
+virtual DotnetCronner.CronnerJobEntity.UpdatedUtc.set -> void
+virtual DotnetCronner.JobExecutionEntity.Apply(DotnetCronner.CronnerJobExecution! execution) -> void
+virtual DotnetCronner.JobExecutionEntity.Attempt.get -> int
+virtual DotnetCronner.JobExecutionEntity.Attempt.set -> void
+virtual DotnetCronner.JobExecutionEntity.Data.get -> string?
+virtual DotnetCronner.JobExecutionEntity.Data.set -> void
+virtual DotnetCronner.JobExecutionEntity.Error.get -> string?
+virtual DotnetCronner.JobExecutionEntity.Error.set -> void
+virtual DotnetCronner.JobExecutionEntity.FinishedAt.get -> System.DateTimeOffset?
+virtual DotnetCronner.JobExecutionEntity.FinishedAt.set -> void
+virtual DotnetCronner.JobExecutionEntity.Owner.get -> string?
+virtual DotnetCronner.JobExecutionEntity.Owner.set -> void
+virtual DotnetCronner.JobExecutionEntity.StartedAt.get -> System.DateTimeOffset
+virtual DotnetCronner.JobExecutionEntity.StartedAt.set -> void
+virtual DotnetCronner.JobExecutionEntity.Status.get -> DotnetCronner.JobExecutionStatus
+virtual DotnetCronner.JobExecutionEntity.Status.set -> void

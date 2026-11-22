@@ -15,16 +15,35 @@ There are two test projects:
 
 - `tests/DotnetCronner.Tests` — the unit suite (in-memory and SQLite stores, the engine, the analyzer). No
   external dependencies.
-- `tests/DotnetCronner.IntegrationTests` — the **execution-lock evidence**: the shared lock contract and the
-  two-scheduler exclusivity suites (`tests/DotnetCronner.Tests/Shared`, compiled into both projects) against
+- `tests/DotnetCronner.IntegrationTests` — the **store-contract evidence**: the shared suites in
+  `tests/DotnetCronner.Tests/Shared` (compiled into both projects) — lock contract, data contract,
+  two-scheduler exclusivity and the end-to-end scheduler scenarios — against
   real PostgreSQL, SQL Server (READ COMMITTED with and without snapshot) and Redis, each started in Docker
   via Testcontainers. Without a reachable Docker they are **skipped**; with `CRONNER_REQUIRE_DOCKER=1` (what
   CI sets) they run and fail loudly if Docker is missing, so the evidence can never silently disappear from a
   green build. Locally: `CRONNER_REQUIRE_DOCKER=1 dotnet test tests/DotnetCronner.IntegrationTests -c Release`
   (first run pulls three images; ~2 minutes).
 
-A custom store can be held to the same contract: implement `IStoreBackend` for it and subclass
-`StoreLockContractTests` / `SchedulerExclusivityTests` — see `docs/custom-store.md`.
+A custom store can be held to the same contract: implement `IStoreBackend` for it and subclass the four
+shared suites — see `docs/custom-store.md`.
+
+A change to how a store must behave belongs in those shared suites, not in a test for one store: that is
+what keeps the stores from drifting apart.
+
+### Changing the public API
+
+Each package under `src/` lists its public surface in `PublicAPI.Shipped.txt` (as of the last release) and
+`PublicAPI.Unshipped.txt` (added since). The build fails when the code and those files disagree, so:
+
+- **Adding** a public member: add its line to `PublicAPI.Unshipped.txt`. Your IDE offers this as a quick
+  fix on the `RS0016` diagnostic, or run
+  `dotnet format analyzers src/<Project>/<Project>.csproj --diagnostics RS0016 --severity warn`.
+- **Removing or changing** one: delete or edit its line (prefix it with `*REMOVED*` in the unshipped file if
+  it is listed in the shipped one) — and add a changelog entry, because that is a breaking change.
+- **Releasing** a package: move the contents of its `PublicAPI.Unshipped.txt` into `PublicAPI.Shipped.txt`.
+
+Prefer `internal` for anything that is not meant to be called by applications or store authors; the tiers
+are described in `docs/api-stability.md`.
 
 ## Project layout
 

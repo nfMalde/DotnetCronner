@@ -7,7 +7,7 @@ namespace DotnetCronner;
 /// cancellation to a running execution, and so that manual triggers arriving while a task is running
 /// can be queued to run immediately afterwards.
 /// </summary>
-public sealed class CronnerExecutionTracker
+internal sealed class CronnerExecutionTracker
 {
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _running = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _pendingTriggers = new(StringComparer.Ordinal);

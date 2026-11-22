@@ -61,3 +61,43 @@ public sealed class RedisSchedulerExclusivityTests(RedisFixture fixture) : Sched
 {
     protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new RedisBackend(fixture));
 }
+
+// ---- The data half of the store contract (round trip, listing, claim eligibility, history, retention) ------------
+
+[Collection(PostgresCollection.Name)]
+public sealed class PostgresStoreDataContractTests(PostgresFixture fixture) : StoreDataContractTests
+{
+    protected override async Task<IStoreBackend> CreateBackendAsync() => await PostgresBackend.CreateAsync(fixture);
+}
+
+[Collection(MsSqlCollection.Name)]
+public sealed class MsSqlStoreDataContractTests(MsSqlFixture fixture) : StoreDataContractTests
+{
+    protected override async Task<IStoreBackend> CreateBackendAsync() => await MsSqlBackend.CreateAsync(fixture, readCommittedSnapshot: false);
+}
+
+[Collection(RedisCollection.Name)]
+public sealed class RedisStoreDataContractTests(RedisFixture fixture) : StoreDataContractTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new RedisBackend(fixture));
+}
+
+// ---- Everyday scheduler behaviour end to end (run, retry, cancel, one-offs, retention, misfires, recovery) ------
+
+[Collection(PostgresCollection.Name)]
+public sealed class PostgresSchedulerScenarioTests(PostgresFixture fixture) : SchedulerScenarioTests
+{
+    protected override async Task<IStoreBackend> CreateBackendAsync() => await PostgresBackend.CreateAsync(fixture);
+}
+
+[Collection(MsSqlCollection.Name)]
+public sealed class MsSqlSchedulerScenarioTests(MsSqlFixture fixture) : SchedulerScenarioTests
+{
+    protected override async Task<IStoreBackend> CreateBackendAsync() => await MsSqlBackend.CreateAsync(fixture, readCommittedSnapshot: false);
+}
+
+[Collection(RedisCollection.Name)]
+public sealed class RedisSchedulerScenarioTests(RedisFixture fixture) : SchedulerScenarioTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new RedisBackend(fixture));
+}

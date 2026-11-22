@@ -6,6 +6,23 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Released with the suite at 0.3.0. **Requires `DotnetCronner >= 0.3.0`.** **No migration needed** — the
+schema is unchanged from 0.1.0.
+
+### Changed
+- `UseEntityFrameworkStore(...)` registers the store through the new public
+  `ICronnerBuilder.UseStore(factory, …)` instead of the builder's store holder, which `DotnetCronner` 0.3.0
+  removed. Behavior is unchanged, but the two packages must be upgraded together: this version does not
+  load against `DotnetCronner` 0.2.x, and 0.2.x of this package does not load against `DotnetCronner` 0.3.0.
+
+### Added
+- The store is covered by the shared data-contract and scheduler-scenario suites in addition to the lock
+  contract (run against SQLite, PostgreSQL and SQL Server on every CI build).
+- The public API of the package is tracked in `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt`.
+
+
 ## [0.2.0] - 2026-10-18
 
 Released with the suite at 0.2.0 (depends on `DotnetCronner.Abstractions >= 0.2.0` and

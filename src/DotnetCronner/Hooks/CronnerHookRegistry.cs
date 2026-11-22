@@ -5,7 +5,7 @@ namespace DotnetCronner;
 /// so it works whether configured at <c>AddDotnetCronner</c> or <c>app.UseDotnetCronner</c> time. Hooks
 /// registered through DI as <see cref="ICronnerTaskHook"/> are picked up separately, per execution scope.
 /// </summary>
-public sealed class CronnerHookRegistry
+internal sealed class CronnerHookRegistry
 {
     private readonly object _gate = new();
     private readonly List<ICronnerTaskHook> _hooks = [];

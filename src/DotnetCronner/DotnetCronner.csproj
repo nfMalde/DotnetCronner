@@ -4,6 +4,13 @@
     <ProjectReference Include="..\DotnetCronner.Abstractions\DotnetCronner.Abstractions.csproj" />
   </ItemGroup>
 
+  <!-- The engine types (hosted service, registries, store holder, …) are internal: they are not part of the
+       supported API surface (see docs/api-stability.md). Only this repository's own test projects see them. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCronner.Tests" />
+    <InternalsVisibleTo Include="DotnetCronner.IntegrationTests" />
+  </ItemGroup>
+
   <!-- Ship the analyzer inside this package so consumers get build-time [CronnerTask] diagnostics. -->
   <ItemGroup>
     <ProjectReference Include="..\DotnetCronner.Analyzers\DotnetCronner.Analyzers.csproj"

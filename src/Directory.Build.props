@@ -1,0 +1,22 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- The public API of every shipped package is tracked in PublicAPI.Shipped.txt / PublicAPI.Unshipped.txt next
+       to its csproj. Adding, changing or removing a public member without updating those files fails the build
+       (RS0016 / RS0017 as errors via TreatWarningsAsErrors), so the surface cannot drift by accident — see
+       docs/api-stability.md. The analyzer assembly is not a consumer-facing API and is exempt. -->
+  <!-- RS0026/RS0027 object to several overloads carrying optional parameters. The cases here are a generic and a
+       non-generic method of the same name (AddHook / AddHook<T>, UseStore<T> / UseStore(factory)), which overload
+       resolution never confuses, so the rule is switched off rather than bending the fluent API around it. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);RS0026;RS0027</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'DotnetCronner.Analyzers'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+
+</Project>

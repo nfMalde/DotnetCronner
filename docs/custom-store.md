@@ -55,6 +55,9 @@ classes at your store (one `IStoreBackend` implementation) and you get the conte
 stale-upsert and two-scheduler tests for free — that is the evidence to look at before you delete your own
 "already running" guard.
 
+The rest of the interface is held to a contract too. Two more suites in the same folder run against every
+shipped store and work the same way for yours — see [The contract suites](#the-contract-suites).
+
 ### 1. Lifetime — declare it
 
 `UseStore<TStore>()` defaults to `CronnerStoreLifetime.Singleton`: your store is built **once** and reused
@@ -406,6 +409,58 @@ builder.Services.AddDotnetCronner(c => c.UseStore<UnitOfWorkCronnerStore>());
 more than one store throws). That's all — scheduling, hooks, the `ICronnerClient`, priority and
 concurrency modes all run unchanged on top of your store.
 
+### Shipping a store as its own package
+
+When the store needs options, or you want a `UseXyzStore(...)` method like the built-in ones, use the
+factory overload. It is the same extension point the Redis and EF Core packages are built on:
+
+```csharp
+public static class XyzCronnerBuilderExtensions
+{
+    public static ICronnerBuilder UseXyzStore(this ICronnerBuilder builder, Action<XyzOptions> configure)
+    {
+        var options = new XyzOptions();
+        configure(options);
+        return builder.UseStore(
+            sp => new XyzCronnerStore(sp.GetRequiredService<IXyzClient>(), options),
+            CronnerStoreLifetime.Singleton,
+            displayName: "UseXyzStore()");   // shown in the "a store is already configured" error
+    }
+}
+```
+
+The factory receives the application's root provider for a `Singleton` store and the current scope's
+provider for a `Scoped` one.
+
+## The contract suites
+
+Four abstract test classes in `tests/DotnetCronner.Tests/Shared` define what a store has to do. They run
+against the in-memory store and a SQLite file in the unit project, and against real PostgreSQL, SQL Server
+and Redis in the integration project — the same assertions every time, only the backend differs.
+
+| Suite | What it pins down |
+| --- | --- |
+| `StoreLockContractTests` | The execution lock: contended claims hand out each task once, renew and release only for the owner, a stale `Upsert` never clears or shortens a lock, orphaned history rows are closed |
+| `StoreDataContractTests` | Everything else on the interface: a job round-trips every field, listing orders by `CreatedUtc` and filters before paging, a claim takes only due and non-cancelled rows and respects `max`, `RemoveAsync` and one-off pruning take the execution history with them, `UpdateProgressAsync` changes nothing but the progress, history reads newest-first and prunes per job |
+| `SchedulerExclusivityTests` | Two schedulers on one store: every task runs once and never concurrently, including when an instance loses its store mid-run |
+| `SchedulerScenarioTests` | One scheduler end to end: run and persisted outcome, retries, cancellation, one-off jobs with a payload, both kinds of retention, misfire catch-up, a restart, and a claim abandoned by a crashed instance |
+
+To run them against your store, copy the `Shared` folder into your test project (or link it, as the
+integration project does), implement `IStoreBackend` — a name, a `CreateStore()` that returns a store
+connected to the same underlying data each time, and clean-up — and add one small class per suite:
+
+```csharp
+public sealed class XyzStoreDataContractTests : StoreDataContractTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() =>
+        Task.FromResult<IStoreBackend>(new XyzBackend());
+}
+```
+
+A store that leaves the optional members at their defaults (no history, no progress, no one-off pruning)
+will fail the tests for exactly those members. That is the suite telling you which features are switched
+off on your store, not a defect in the lock.
+
 ## Checklist
 
 - Inject `IServiceScopeFactory`, not a scoped UnitOfWork.
@@ -421,8 +476,9 @@ concurrency modes all run unchanged on top of your store.
   cancelled), and **throws** when it cannot tell (§3).
 - `ReleaseLockAsync` clears the lock only while `LockOwner == owner` (§4) — override the default once your
   `UpsertAsync` preserves lock fields.
-- Run the shared `StoreLockContractTests` / `SchedulerExclusivityTests` against your store (implement
-  `IStoreBackend` for it) before relying on the cross-process guarantee.
+- `RemoveAsync` and `PruneCompletedOneOffsAsync` take the removed job's execution history with them.
+- Run the shared [contract suites](#the-contract-suites) against your store (implement `IStoreBackend` for
+  it) before relying on the cross-process guarantee.
 - `OnStartAsync` / `OnCloseAsync` are optional — implement them only for a per-run session, and make sure
   `OnCloseAsync` disposes/commits what `OnStartAsync` opened.
 - `PingAsync` is optional: the default issues one cheap read and treats "answered without throwing" as

@@ -1,7 +1,7 @@
 namespace DotnetCronner;
 
 /// <summary>The default in-process implementation of <see cref="ICronnerClient"/> over the configured store.</summary>
-public sealed class CronnerClient : ICronnerClient
+internal sealed class CronnerClient : ICronnerClient
 {
     private readonly CronnerStoreAccessor _stores;
     private readonly CronnerScheduleSignal _signal;

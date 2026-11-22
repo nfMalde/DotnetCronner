@@ -1,0 +1,2 @@
+#nullable enable
+DotnetCronner.ICronnerBuilder.UseStore(System.Func<System.IServiceProvider!, DotnetCronner.ICronnerStore!>! factory, DotnetCronner.CronnerStoreLifetime lifetime = DotnetCronner.CronnerStoreLifetime.Singleton, string? displayName = null) -> DotnetCronner.ICronnerBuilder!

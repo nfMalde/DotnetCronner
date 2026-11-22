@@ -1,0 +1,42 @@
+#nullable enable
+DotnetCronner.CronnerRedisBuilderExtensions
+DotnetCronner.CronnerRedisOptions
+DotnetCronner.CronnerRedisOptions.CacheTtl.get -> System.TimeSpan?
+DotnetCronner.CronnerRedisOptions.CacheTtl.set -> void
+DotnetCronner.CronnerRedisOptions.Configuration.get -> string?
+DotnetCronner.CronnerRedisOptions.Configuration.set -> void
+DotnetCronner.CronnerRedisOptions.ConfigurationOptions.get -> StackExchange.Redis.ConfigurationOptions?
+DotnetCronner.CronnerRedisOptions.ConfigurationOptions.set -> void
+DotnetCronner.CronnerRedisOptions.ConnectionMultiplexerFactory.get -> System.Func<System.IServiceProvider!, StackExchange.Redis.IConnectionMultiplexer!>?
+DotnetCronner.CronnerRedisOptions.ConnectionMultiplexerFactory.set -> void
+DotnetCronner.CronnerRedisOptions.CronnerRedisOptions() -> void
+DotnetCronner.CronnerRedisOptions.KeyPrefix.get -> string!
+DotnetCronner.CronnerRedisOptions.KeyPrefix.set -> void
+DotnetCronner.RedisCronnerCacheProvider
+DotnetCronner.RedisCronnerCacheProvider.GetAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.RedisCronnerCacheProvider.RedisCronnerCacheProvider(StackExchange.Redis.IConnectionMultiplexer! redis, string! keyPrefix = "cronner:", System.TimeSpan? ttl = null) -> void
+DotnetCronner.RedisCronnerCacheProvider.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerCacheProvider.SetAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore
+DotnetCronner.RedisCronnerStore.AcquireDueAsync(System.DateTimeOffset now, string! owner, System.TimeSpan lockTtl, int max, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.RedisCronnerStore.FinalizeOrphanedExecutionsAsync(string! jobId, System.DateTimeOffset finishedAt, string! error, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+DotnetCronner.RedisCronnerStore.GetAsync(DotnetCronner.CronnerTaskState? state, int offset, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.RedisCronnerStore.GetByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.RedisCronnerStore.GetExecutionsAsync(string! jobId, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.RedisCronnerStore.PingAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.PruneCompletedOneOffsAsync(string! definitionId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.PruneExecutionsAsync(string! jobId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.RecordExecutionFinishedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.RecordExecutionStartedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.RedisCronnerStore(StackExchange.Redis.IConnectionMultiplexer! redis, string! keyPrefix = "cronner:") -> void
+DotnetCronner.RedisCronnerStore.ReleaseLockAsync(string! id, string! owner, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.RedisCronnerStore.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.RenewLockAsync(string! id, string! owner, System.DateTimeOffset lockedUntil, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.RedisCronnerStore.UpdateProgressAsync(string! id, decimal progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.RedisCronnerStore.UpsertAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisAsStore(this DotnetCronner.ICronnerBuilder! builder, string! configuration) -> DotnetCronner.ICronnerBuilder!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisAsStore(this DotnetCronner.ICronnerBuilder! builder, System.Action<DotnetCronner.CronnerRedisOptions!>! configure) -> DotnetCronner.ICronnerBuilder!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisAsStore(this DotnetCronner.ICronnerBuilder! builder, System.Action<System.IServiceProvider!, DotnetCronner.CronnerRedisOptions!>! configure) -> DotnetCronner.ICronnerBuilder!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisCacheProvider(this DotnetCronner.ICronnerCacheBuilder! cache, string! configuration) -> DotnetCronner.ICronnerCacheBuilder!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisCacheProvider(this DotnetCronner.ICronnerCacheBuilder! cache, System.Action<DotnetCronner.CronnerRedisOptions!>! configure) -> DotnetCronner.ICronnerCacheBuilder!
+static DotnetCronner.CronnerRedisBuilderExtensions.UseRedisCacheProvider(this DotnetCronner.ICronnerCacheBuilder! cache, System.Action<System.IServiceProvider!, DotnetCronner.CronnerRedisOptions!>! configure) -> DotnetCronner.ICronnerCacheBuilder!

@@ -4,7 +4,7 @@ namespace DotnetCronner;
 /// A lightweight wake-up signal so the scheduler can react immediately to manually triggered tasks
 /// instead of waiting for the next poll tick.
 /// </summary>
-public sealed class CronnerScheduleSignal
+internal sealed class CronnerScheduleSignal
 {
     private readonly SemaphoreSlim _semaphore = new(0);
 

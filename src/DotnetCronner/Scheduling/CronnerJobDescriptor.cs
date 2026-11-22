@@ -7,7 +7,7 @@ namespace DotnetCronner;
 /// arguments. Descriptors are held in the <see cref="CronnerRegistry"/> and looked up by id; the
 /// persisted <see cref="CronnerJob"/> only carries schedule and state.
 /// </summary>
-public sealed class CronnerJobDescriptor
+internal sealed class CronnerJobDescriptor
 {
     /// <summary>Creates a descriptor.</summary>
     public CronnerJobDescriptor(

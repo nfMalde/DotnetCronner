@@ -1,0 +1,307 @@
+#nullable enable
+const DotnetCronner.CronnerDiagnostics.ActivitySourceName = "DotnetCronner" -> string!
+const DotnetCronner.CronnerDiagnostics.ExecuteActivityName = "cronner.execute" -> string!
+const DotnetCronner.CronnerDiagnostics.MeterName = "DotnetCronner" -> string!
+const DotnetCronner.CronnerDiagnostics.Outcomes.Cancelled = "cancelled" -> string!
+const DotnetCronner.CronnerDiagnostics.Outcomes.Failed = "failed" -> string!
+const DotnetCronner.CronnerDiagnostics.Outcomes.LockLost = "lock_lost" -> string!
+const DotnetCronner.CronnerDiagnostics.Outcomes.Success = "success" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.Attempt = "cronner.attempt" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.ExecutionId = "cronner.execution.id" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.JobKind = "cronner.job.kind" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.MaxAttempts = "cronner.max_attempts" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.MisfirePolicy = "cronner.misfire.policy" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.Outcome = "cronner.outcome" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.Owner = "cronner.owner" -> string!
+const DotnetCronner.CronnerDiagnostics.Tags.TaskId = "cronner.task.id" -> string!
+DotnetCronner.CachedCronnerStore
+DotnetCronner.CachedCronnerStore.AcquireDueAsync(System.DateTimeOffset now, string! owner, System.TimeSpan lockTtl, int max, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.CachedCronnerStore.CachedCronnerStore(DotnetCronner.ICronnerStore! inner, DotnetCronner.ICronnerCacheProvider! cache) -> void
+DotnetCronner.CachedCronnerStore.FinalizeOrphanedExecutionsAsync(string! jobId, System.DateTimeOffset finishedAt, string! error, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+DotnetCronner.CachedCronnerStore.GetAsync(DotnetCronner.CronnerTaskState? state, int offset, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.CachedCronnerStore.GetByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.CachedCronnerStore.GetExecutionsAsync(string! jobId, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.CachedCronnerStore.OnCloseAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.OnStartAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.PingAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.PruneCompletedOneOffsAsync(string! definitionId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.PruneExecutionsAsync(string! jobId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.RecordExecutionFinishedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.RecordExecutionStartedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.ReleaseLockAsync(string! id, string! owner, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.CachedCronnerStore.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.RenewLockAsync(string! id, string! owner, System.DateTimeOffset lockedUntil, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.CachedCronnerStore.UpdateProgressAsync(string! id, decimal progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CachedCronnerStore.UpsertAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.CronExpression
+DotnetCronner.CronExpression.GetNextOccurrence(System.DateTimeOffset from, System.TimeZoneInfo! timeZone) -> System.DateTimeOffset?
+DotnetCronner.CronFormatException
+DotnetCronner.CronFormatException.CronFormatException(string! message) -> void
+DotnetCronner.CronnerDiagnostics
+DotnetCronner.CronnerDiagnostics.Outcomes
+DotnetCronner.CronnerDiagnostics.Tags
+DotnetCronner.CronnerExpressions
+DotnetCronner.CronnerHookScope
+DotnetCronner.CronnerHookScope.Isolated = 1 -> DotnetCronner.CronnerHookScope
+DotnetCronner.CronnerHookScope.Shared = 0 -> DotnetCronner.CronnerHookScope
+DotnetCronner.CronnerHostExtensions
+DotnetCronner.CronnerInvalidScheduleBehavior
+DotnetCronner.CronnerInvalidScheduleBehavior.MarkFailed = 0 -> DotnetCronner.CronnerInvalidScheduleBehavior
+DotnetCronner.CronnerInvalidScheduleBehavior.Throw = 1 -> DotnetCronner.CronnerInvalidScheduleBehavior
+DotnetCronner.CronnerOptions
+DotnetCronner.CronnerOptions.CronnerOptions() -> void
+DotnetCronner.CronnerOptions.DefaultMaxRetries.get -> int
+DotnetCronner.CronnerOptions.DefaultMaxRetries.set -> void
+DotnetCronner.CronnerOptions.DefaultMisfirePolicy.get -> DotnetCronner.MisfirePolicy
+DotnetCronner.CronnerOptions.DefaultMisfirePolicy.set -> void
+DotnetCronner.CronnerOptions.DefaultRetryPolicy.get -> DotnetCronner.CronnerRetryPolicy?
+DotnetCronner.CronnerOptions.DefaultRetryPolicy.set -> void
+DotnetCronner.CronnerOptions.ExecutionHistoryRetentionCount.get -> int
+DotnetCronner.CronnerOptions.ExecutionHistoryRetentionCount.set -> void
+DotnetCronner.CronnerOptions.HookScope.get -> DotnetCronner.CronnerHookScope
+DotnetCronner.CronnerOptions.HookScope.set -> void
+DotnetCronner.CronnerOptions.KeepAliveInterval.get -> System.TimeSpan?
+DotnetCronner.CronnerOptions.KeepAliveInterval.set -> void
+DotnetCronner.CronnerOptions.LockTtl.get -> System.TimeSpan
+DotnetCronner.CronnerOptions.LockTtl.set -> void
+DotnetCronner.CronnerOptions.MaxConcurrentTasks.get -> int
+DotnetCronner.CronnerOptions.MaxConcurrentTasks.set -> void
+DotnetCronner.CronnerOptions.MisfireCatchUpMax.get -> int
+DotnetCronner.CronnerOptions.MisfireCatchUpMax.set -> void
+DotnetCronner.CronnerOptions.MisfireThreshold.get -> System.TimeSpan
+DotnetCronner.CronnerOptions.MisfireThreshold.set -> void
+DotnetCronner.CronnerOptions.OneOffRetentionCount.get -> int
+DotnetCronner.CronnerOptions.OneOffRetentionCount.set -> void
+DotnetCronner.CronnerOptions.OnInvalidSchedule.get -> DotnetCronner.CronnerInvalidScheduleBehavior
+DotnetCronner.CronnerOptions.OnInvalidSchedule.set -> void
+DotnetCronner.CronnerOptions.PollingInterval.get -> System.TimeSpan
+DotnetCronner.CronnerOptions.PollingInterval.set -> void
+DotnetCronner.CronnerOptions.RetryDelay.get -> System.TimeSpan
+DotnetCronner.CronnerOptions.RetryDelay.set -> void
+DotnetCronner.CronnerOptions.ScanEntryAssembly.get -> bool
+DotnetCronner.CronnerOptions.ScanEntryAssembly.set -> void
+DotnetCronner.CronnerOptions.TimeZone.get -> System.TimeZoneInfo!
+DotnetCronner.CronnerOptions.TimeZone.set -> void
+DotnetCronner.CronnerProgressInfo
+DotnetCronner.CronnerProgressInfo.Category.get -> string?
+DotnetCronner.CronnerProgressInfo.Category.init -> void
+DotnetCronner.CronnerProgressInfo.CronnerProgressInfo() -> void
+DotnetCronner.CronnerProgressInfo.Id.get -> string!
+DotnetCronner.CronnerProgressInfo.Id.init -> void
+DotnetCronner.CronnerProgressInfo.Value.get -> decimal
+DotnetCronner.CronnerProgressInfo.Value.init -> void
+DotnetCronner.CronnerSchedulerDiagnostics
+DotnetCronner.CronnerSchedulerDiagnostics.CronnerSchedulerDiagnostics() -> void
+DotnetCronner.CronnerSchedulerDiagnostics.IsStarted.get -> bool
+DotnetCronner.CronnerSchedulerDiagnostics.LastPollError.get -> string?
+DotnetCronner.CronnerSchedulerDiagnostics.LastPollFaultUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerSchedulerDiagnostics.LastPollUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerSchedulerDiagnostics.LongestRunningDuration.get -> System.TimeSpan?
+DotnetCronner.CronnerSchedulerDiagnostics.PollCount.get -> long
+DotnetCronner.CronnerSchedulerDiagnostics.RunningCount.get -> int
+DotnetCronner.CronnerSchedulerDiagnostics.StartedUtc.get -> System.DateTimeOffset?
+DotnetCronner.CronnerServiceCollectionExtensions
+DotnetCronner.CronnerTaskContext
+DotnetCronner.CronnerTaskContext.Attempt.get -> int
+DotnetCronner.CronnerTaskContext.CancellationToken.get -> System.Threading.CancellationToken
+DotnetCronner.CronnerTaskContext.CancellationToken.init -> void
+DotnetCronner.CronnerTaskContext.CronnerTaskContext() -> void
+DotnetCronner.CronnerTaskContext.Duration.get -> System.TimeSpan
+DotnetCronner.CronnerTaskContext.Exception.get -> System.Exception?
+DotnetCronner.CronnerTaskContext.ExecutionId.get -> string!
+DotnetCronner.CronnerTaskContext.Get<T>() -> T?
+DotnetCronner.CronnerTaskContext.HasParam<T>() -> T
+DotnetCronner.CronnerTaskContext.HasParam<T>(System.Func<System.IServiceProvider!, T>! factory) -> T
+DotnetCronner.CronnerTaskContext.Job.get -> DotnetCronner.CronnerJob!
+DotnetCronner.CronnerTaskContext.Job.init -> void
+DotnetCronner.CronnerTaskContext.KeepAliveInterval.get -> System.TimeSpan
+DotnetCronner.CronnerTaskContext.KeepAliveInterval.init -> void
+DotnetCronner.CronnerTaskContext.LockTtl.get -> System.TimeSpan
+DotnetCronner.CronnerTaskContext.LockTtl.init -> void
+DotnetCronner.CronnerTaskContext.MaxAttempts.get -> int
+DotnetCronner.CronnerTaskContext.PreviousError.get -> string?
+DotnetCronner.CronnerTaskContext.ProgressPayload.get -> object?
+DotnetCronner.CronnerTaskContext.ProgressScope.get -> DotnetCronner.CronnerProgressInfo?
+DotnetCronner.CronnerTaskContext.RetryDelay.get -> System.TimeSpan?
+DotnetCronner.CronnerTaskContext.Services.get -> System.IServiceProvider!
+DotnetCronner.CronnerTaskContext.Services.init -> void
+DotnetCronner.CronnerTaskContext.Set<T>(T value) -> void
+DotnetCronner.CronnerTaskContext.SetExecutionData(object? data) -> void
+DotnetCronner.CronnerTaskContext.TotalProgress.get -> decimal
+DotnetCronner.CronnerTaskContext.TryGet<T>(out T value) -> bool
+DotnetCronner.CronnerTaskContext.TryGetExecutionData<T>(out T value) -> bool
+DotnetCronner.CronnerTaskContext.WillRetry.get -> bool
+DotnetCronner.CronnerTaskNotFoundException
+DotnetCronner.CronnerTaskNotFoundException.CronnerTaskNotFoundException(string! id) -> void
+DotnetCronner.CronnerTaskNotFoundException.Id.get -> string!
+DotnetCronner.DuplicateCronnerTaskException
+DotnetCronner.DuplicateCronnerTaskException.DuplicateCronnerTaskException(string! id) -> void
+DotnetCronner.DuplicateCronnerTaskException.Id.get -> string!
+DotnetCronner.ICronnerBuilder
+DotnetCronner.ICronnerBuilder.AddHook(DotnetCronner.ICronnerTaskHook! hook, DotnetCronner.CronnerHookScope? scope = null) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.AddHook<THook>(DotnetCronner.CronnerHookScope? scope = null) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.AutoDiscoverFromAssembly(params System.Reflection.Assembly![]! assemblies) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.AutoDiscoverFromAssembly(params System.Type![]! assemblyMarkerTypes) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.AutoDiscoverFromType(params System.Type![]! baseTypesOrInterfaces) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Configure(System.Action<DotnetCronner.CronnerOptions!>! configure) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.DisableAutoDiscovery() -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnCancel(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnCancel<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnCancel<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnFail(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnFail<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnFail<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnKeepAlive(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnKeepAlive<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnKeepAlive<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockAcquire(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockAcquire<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockAcquire<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockLost(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockLost<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockLost<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockRelease(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockRelease<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnLockRelease<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeClosed(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeClosed<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeClosed<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeOpened(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeOpened<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnProgressScopeOpened<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnScopeProgress(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnScopeProgress<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnScopeProgress<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnStart(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnStart<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnStart<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnSuccess(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnSuccess<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnSuccess<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnTotalProgressChange(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnTotalProgressChange<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.OnTotalProgressChange<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Options.get -> DotnetCronner.CronnerOptions!
+DotnetCronner.ICronnerBuilder.Sched<TJob>(System.Linq.Expressions.Expression<System.Action<TJob>!>! call, string! cronString) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Sched<TJob>(System.Linq.Expressions.Expression<System.Action<TJob>!>! call, System.Action<DotnetCronner.ICronnerScheduleOptions!>! options) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Sched<TJob>(System.Linq.Expressions.Expression<System.Func<TJob, System.Threading.Tasks.Task!>!>! call, string! cronString) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Sched<TJob>(System.Linq.Expressions.Expression<System.Func<TJob, System.Threading.Tasks.Task!>!>! call, System.Action<DotnetCronner.ICronnerScheduleOptions!>! options) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.Services.get -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+DotnetCronner.ICronnerBuilder.UseSecondLevelCache(System.Action<DotnetCronner.ICronnerCacheBuilder!>! configure) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.UseStore<TStore>(DotnetCronner.CronnerStoreLifetime lifetime = DotnetCronner.CronnerStoreLifetime.Singleton) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.WithDedicatedDI(System.Action<Microsoft.Extensions.DependencyInjection.IServiceCollection!>! configure, Microsoft.Extensions.DependencyInjection.ServiceLifetime jobLifetime = Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.WithExecutionHistory(int keepPerTask) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.WithKeepAliveInterval(System.TimeSpan interval) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.WithOneOffRetention(int keepNewest) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerBuilder.WithRetryPolicy(System.Action<DotnetCronner.ICronnerRetryPolicyBuilder!>! configure) -> DotnetCronner.ICronnerBuilder!
+DotnetCronner.ICronnerCacheBuilder
+DotnetCronner.ICronnerCacheBuilder.UseCacheProvider(System.Func<System.IServiceProvider!, DotnetCronner.ICronnerCacheProvider!>! factory) -> DotnetCronner.ICronnerCacheBuilder!
+DotnetCronner.ICronnerCacheBuilder.UseCacheProvider<TProvider>() -> DotnetCronner.ICronnerCacheBuilder!
+DotnetCronner.ICronnerJobContext
+DotnetCronner.ICronnerJobContext.Attempt.get -> int
+DotnetCronner.ICronnerJobContext.ExecutionId.get -> string!
+DotnetCronner.ICronnerJobContext.Get<T>() -> T?
+DotnetCronner.ICronnerJobContext.MaxAttempts.get -> int
+DotnetCronner.ICronnerJobContext.OpenProgressScope(string? category = null, object? payload = null) -> DotnetCronner.ICronnerProgressScope!
+DotnetCronner.ICronnerJobContext.PreviousError.get -> string?
+DotnetCronner.ICronnerJobContext.Progress(decimal value, object? payload = null) -> void
+DotnetCronner.ICronnerJobContext.ProgressAsync(decimal value, object? payload = null) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerJobContext.Set<T>(T value) -> void
+DotnetCronner.ICronnerJobContext.SetExecutionData(object? data) -> void
+DotnetCronner.ICronnerJobContext.TotalProgress.get -> decimal
+DotnetCronner.ICronnerJobContext.TryGet<T>(out T value) -> bool
+DotnetCronner.ICronnerJobContext.TryGetExecutionData<T>(out T value) -> bool
+DotnetCronner.ICronnerProgressScope
+DotnetCronner.ICronnerProgressScope.Category.get -> string?
+DotnetCronner.ICronnerProgressScope.Id.get -> string!
+DotnetCronner.ICronnerProgressScope.Progress(decimal value, object? payload = null) -> void
+DotnetCronner.ICronnerProgressScope.ProgressAsync(decimal value, object? payload = null) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerProgressScope.Value.get -> decimal
+DotnetCronner.ICronnerRetryPolicyBuilder
+DotnetCronner.ICronnerRetryPolicyBuilder.ExponentialBackoff(System.TimeSpan delay) -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerRetryPolicyBuilder.FixedDelay(System.TimeSpan delay) -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerRetryPolicyBuilder.Immediate() -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerRetryPolicyBuilder.MaxAttempts(int attempts) -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerRetryPolicyBuilder.MaxDelay(System.TimeSpan maxDelay) -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerRetryPolicyBuilder.WithJitter(bool enabled = true) -> DotnetCronner.ICronnerRetryPolicyBuilder!
+DotnetCronner.ICronnerScheduleOptions
+DotnetCronner.ICronnerScheduleOptions.OnCancel(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnCancel<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnCancel<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnFail(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnFail<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnFail<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnKeepAlive(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnKeepAlive<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnKeepAlive<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockAcquire(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockAcquire<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockAcquire<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockLost(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockLost<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockLost<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockRelease(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockRelease<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnLockRelease<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeClosed(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeClosed<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeClosed<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeOpened(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeOpened<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnProgressScopeOpened<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnScopeProgress(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnScopeProgress<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnScopeProgress<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnStart(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnStart<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnStart<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnSuccess(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnSuccess<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnSuccess<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnTotalProgressChange(System.Func<DotnetCronner.CronnerTaskContext!, System.Threading.Tasks.Task!>! handler) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnTotalProgressChange<THook>(System.Linq.Expressions.Expression<System.Action<THook>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.OnTotalProgressChange<THook>(System.Linq.Expressions.Expression<System.Func<THook, System.Threading.Tasks.Task!>!>! call) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithConcurrency(DotnetCronner.CronnerConcurrencyMode mode) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithCron(string! cronString) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithDescription(string! description) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithHook(DotnetCronner.ICronnerTaskHook! hook, DotnetCronner.CronnerHookScope? scope = null) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithHook<THook>(DotnetCronner.CronnerHookScope? scope = null) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithId(string! id) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithMisfirePolicy(DotnetCronner.MisfirePolicy policy) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithPrio(DotnetCronner.CronnerTaskPriority priority) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerScheduleOptions.WithRetryPolicy(System.Action<DotnetCronner.ICronnerRetryPolicyBuilder!>! configure) -> DotnetCronner.ICronnerScheduleOptions!
+DotnetCronner.ICronnerTaskHook
+DotnetCronner.ICronnerTaskHook.OnCancelAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnFailAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnKeepAliveAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnLockAcquireAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnLockLostAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnLockReleaseAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnProgressScopeClosedAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnProgressScopeOpenedAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnScopeProgressAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnStartAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnSuccessAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerTaskHook.OnTotalProgressChangeAsync(DotnetCronner.CronnerTaskContext! context) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore
+DotnetCronner.InMemoryCronnerStore.AcquireDueAsync(System.DateTimeOffset now, string! owner, System.TimeSpan lockTtl, int max, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.InMemoryCronnerStore.FinalizeOrphanedExecutionsAsync(string! jobId, System.DateTimeOffset finishedAt, string! error, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+DotnetCronner.InMemoryCronnerStore.GetAsync(DotnetCronner.CronnerTaskState? state, int offset, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.InMemoryCronnerStore.GetByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.InMemoryCronnerStore.GetExecutionsAsync(string! jobId, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.InMemoryCronnerStore.InMemoryCronnerStore() -> void
+DotnetCronner.InMemoryCronnerStore.PruneCompletedOneOffsAsync(string! definitionId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.PruneExecutionsAsync(string! jobId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.RecordExecutionFinishedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.RecordExecutionStartedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.ReleaseLockAsync(string! id, string! owner, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.InMemoryCronnerStore.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.RenewLockAsync(string! id, string! owner, System.DateTimeOffset lockedUntil, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.InMemoryCronnerStore.UpdateProgressAsync(string! id, decimal progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.InMemoryCronnerStore.UpsertAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+override DotnetCronner.CronExpression.ToString() -> string!
+static DotnetCronner.CronExpression.Parse(string! expression) -> DotnetCronner.CronExpression!
+static DotnetCronner.CronnerExpressions.HasParam<T>(this object! instance) -> T
+static DotnetCronner.CronnerExpressions.HasParam<T>(this object! instance, System.Func<System.IServiceProvider!, T>! factory) -> T
+static DotnetCronner.CronnerHostExtensions.UseDotnetCronner(this Microsoft.Extensions.Hosting.IHost! host, System.Action<DotnetCronner.ICronnerBuilder!>! configure) -> Microsoft.Extensions.Hosting.IHost!
+static DotnetCronner.CronnerServiceCollectionExtensions.AddDotnetCronner(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<DotnetCronner.ICronnerBuilder!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

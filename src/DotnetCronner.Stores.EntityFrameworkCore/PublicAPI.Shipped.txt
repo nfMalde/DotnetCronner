@@ -1,0 +1,42 @@
+#nullable enable
+DotnetCronner.CronnerDbContext
+DotnetCronner.CronnerDbContext.CronnerDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<DotnetCronner.CronnerDbContext!>! options) -> void
+DotnetCronner.CronnerDbContext.CronnerJobExecutions.get -> Microsoft.EntityFrameworkCore.DbSet<DotnetCronner.CronnerJobExecutionEntity!>!
+DotnetCronner.CronnerDbContext.CronnerJobs.get -> Microsoft.EntityFrameworkCore.DbSet<DotnetCronner.CronnerJobEntity!>!
+DotnetCronner.CronnerEfBuilderExtensions
+DotnetCronner.CronnerJobExecutionEntity
+DotnetCronner.CronnerJobExecutionEntity.CronnerJobExecutionEntity() -> void
+DotnetCronner.CronnerModelBuilderExtensions
+DotnetCronner.EfCronnerStore<TContext>
+DotnetCronner.EfCronnerStore<TContext>.AcquireDueAsync(System.DateTimeOffset now, string! owner, System.TimeSpan lockTtl, int max, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.EfCronnerStore<TContext>.EfCronnerStore(Microsoft.EntityFrameworkCore.IDbContextFactory<TContext!>! contextFactory) -> void
+DotnetCronner.EfCronnerStore<TContext>.FinalizeOrphanedExecutionsAsync(string! jobId, System.DateTimeOffset finishedAt, string! error, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+DotnetCronner.EfCronnerStore<TContext>.GetAsync(DotnetCronner.CronnerTaskState? state, int offset, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJob!>!>!
+DotnetCronner.EfCronnerStore<TContext>.GetByIdAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<DotnetCronner.CronnerJob?>!
+DotnetCronner.EfCronnerStore<TContext>.GetExecutionsAsync(string! jobId, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<DotnetCronner.CronnerJobExecution!>!>!
+DotnetCronner.EfCronnerStore<TContext>.PingAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.PruneCompletedOneOffsAsync(string! definitionId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.PruneExecutionsAsync(string! jobId, int keepNewest, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.RecordExecutionFinishedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.RecordExecutionStartedAsync(DotnetCronner.CronnerJobExecution! execution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.ReleaseLockAsync(string! id, string! owner, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.EfCronnerStore<TContext>.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.RenewLockAsync(string! id, string! owner, System.DateTimeOffset lockedUntil, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+DotnetCronner.EfCronnerStore<TContext>.UpdateProgressAsync(string! id, decimal progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.EfCronnerStore<TContext>.UpsertAsync(DotnetCronner.CronnerJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+DotnetCronner.ICronnerDbContext
+DotnetCronner.ICronnerDbContext.CronnerJobExecutions.get -> Microsoft.EntityFrameworkCore.DbSet<DotnetCronner.CronnerJobExecutionEntity!>!
+DotnetCronner.ICronnerDbContext.CronnerJobs.get -> Microsoft.EntityFrameworkCore.DbSet<DotnetCronner.CronnerJobEntity!>!
+override DotnetCronner.CronnerDbContext.OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> void
+override DotnetCronner.CronnerJobExecutionEntity.Apply(DotnetCronner.CronnerJobExecution! execution) -> void
+static DotnetCronner.CronnerEfBuilderExtensions.UseEntityFrameworkStore(this DotnetCronner.ICronnerBuilder! builder, System.Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!>! configureDbContext) -> DotnetCronner.ICronnerBuilder!
+static DotnetCronner.CronnerEfBuilderExtensions.UseEntityFrameworkStore<TContext>(this DotnetCronner.ICronnerBuilder! builder) -> DotnetCronner.ICronnerBuilder!
+static DotnetCronner.CronnerJobExecutionEntity.From(DotnetCronner.CronnerJobExecution! execution) -> DotnetCronner.CronnerJobExecutionEntity!
+static DotnetCronner.CronnerModelBuilderExtensions.ApplyCronnerModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+virtual DotnetCronner.CronnerJobExecutionEntity.CorrelationId.get -> string!
+virtual DotnetCronner.CronnerJobExecutionEntity.CorrelationId.set -> void
+virtual DotnetCronner.CronnerJobExecutionEntity.Id.get -> long
+virtual DotnetCronner.CronnerJobExecutionEntity.Id.set -> void
+virtual DotnetCronner.CronnerJobExecutionEntity.TaskId.get -> string!
+virtual DotnetCronner.CronnerJobExecutionEntity.TaskId.set -> void
+virtual DotnetCronner.CronnerJobExecutionEntity.ToDomain() -> DotnetCronner.CronnerJobExecution!

@@ -13,7 +13,7 @@ namespace DotnetCronner;
 /// the store, then repeatedly claims due tasks (highest priority first) and dispatches them to a pool
 /// of workers bounded by <see cref="CronnerOptions.MaxConcurrentTasks"/>.
 /// </summary>
-public sealed class CronnerHostedService : BackgroundService
+internal sealed class CronnerHostedService : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly CronnerStoreAccessor _stores;
