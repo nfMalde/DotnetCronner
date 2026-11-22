@@ -210,7 +210,8 @@ app.UseDotnetCronner(c => c.UseStore<MyStore>(CronnerStoreLifetime.Scoped));
 ```
 
 Bring your own persistence (Dapper, NHibernate, a UnitOfWork, …) by implementing `ICronnerStore` —
-see [writing a custom store](docs/custom-store.md). Abstractions ships a ready-made `CronnerJobEntity`
+see [writing a custom store](docs/custom-store.md). To ship a store as its own package with a
+`UseXyzStore(...)` method, build it on `UseStore(factory, lifetime, displayName)`. Abstractions ships a ready-made `CronnerJobEntity`
 (a mutable class with `virtual` properties and `ToDomain`/`From`/`Apply` helpers) you can map or subclass
 instead of hand-rolling one.
 
@@ -639,6 +640,14 @@ every tag, suggested histogram buckets, and the store-reachability contract — 
   (READ COMMITTED with and without snapshot) and **Redis** on every CI build. For a custom store, the
   contract those tests check is spelled out in [`docs/custom-store.md`](docs/custom-store.md) — and you can
   run the very same suites against it.
+- **Every store behaves the same.** The engine and `ICronnerClient` are written against `ICronnerStore` and
+  never know which store is behind it, so the shipped stores are held to one behavioral contract beyond the
+  lock as well. `StoreDataContractTests` pins down the data side (a job round-trips every field, listing
+  order and paging, which rows a claim may take, removal and retention taking the execution history along,
+  history order and pruning), and `SchedulerScenarioTests` runs the scheduler end to end — a run and its
+  persisted outcome, retries, cancellation, one-off jobs with a payload, both kinds of retention, misfire
+  catch-up, a restart, and a claim abandoned by a crashed instance. Both run against the in-memory store,
+  SQLite, PostgreSQL, SQL Server and Redis on every CI build.
 - **The lease rule — what happens when the store cannot answer.** A keepalive renewal answered `false`
   (the claim was reclaimed, released, or the task cancelled) is a definitive loss and the run is cancelled at
   once. A renewal the store cannot answer — it throws, or does not answer in time — is **not** a lost lock:
@@ -687,7 +696,10 @@ The analyzer ships inside the `DotnetCronner` package, so no extra reference is 
 **DotnetCronner is pre-1.0.** Expect a few more `0.x` releases and one or more previews before a stable
 `1.0.0`. While on `0.x`, the public API may still change between releases as it settles and more extension
 points open up, so pin your versions accordingly — `1.0.0` will follow once the surface has proven itself
-in real use.
+in real use. Which parts are expected to carry over unchanged, which may still move, and how the surface is
+guarded against accidental changes is laid out in [docs/api-stability.md](docs/api-stability.md). Because
+the packages are released independently, upgrade them together when a changelog says so: the store packages
+from `0.3.0` on need `DotnetCronner` `0.3.0` or later.
 
 **Multiple instances / nodes.** Running several scheduler instances against one shared store is supported
 and validated for the **EF Core store on PostgreSQL and SQL Server** and for the **Redis store** — the

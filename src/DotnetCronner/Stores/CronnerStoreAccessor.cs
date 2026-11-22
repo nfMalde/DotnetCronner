@@ -15,7 +15,7 @@ namespace DotnetCronner;
 /// returns the same cached instance, so the cost is one short-lived scope per call and behaviour is
 /// unchanged.</para>
 /// </summary>
-public sealed class CronnerStoreAccessor
+internal sealed class CronnerStoreAccessor
 {
     private readonly IServiceScopeFactory _scopes;
     private readonly CronnerStoreHolder _holder;

@@ -138,7 +138,12 @@ public sealed class InMemoryCronnerStore : ICronnerStore
                 .Skip(Math.Max(0, keepNewest))
                 .ToArray();
             foreach (var job in stale)
+            {
                 _jobs.TryRemove(job.Id, out _);
+                // Cascade, like RemoveAsync: a pruned instance takes its execution history with it.
+                foreach (var execution in _executions.Values.Where(e => e.JobId == job.Id).ToArray())
+                    _executions.TryRemove(execution.Id, out _);
+            }
         }
 
         return Task.CompletedTask;

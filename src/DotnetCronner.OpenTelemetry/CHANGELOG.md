@@ -6,6 +6,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Released with the suite at 0.3.0 (depends on `DotnetCronner >= 0.3.0`). No behavior change — the meter and
+activity source names it subscribes to are unchanged.
+
+### Added
+- The public API of the package is tracked in `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt`; the
+  build fails when a public member is added, changed or removed without updating them. This package is
+  classed as *provisional* until 1.0 — see [docs/api-stability.md](../../docs/api-stability.md).
+
 ## [0.2.0] - 2026-10-18
 
 First release, alongside the suite at 0.2.0 (depends on `DotnetCronner >= 0.2.0`).

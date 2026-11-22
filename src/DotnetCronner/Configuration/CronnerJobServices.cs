@@ -9,7 +9,7 @@ namespace DotnetCronner;
 /// separate, isolated provider is built from a caller-supplied service collection, and the discovered
 /// job classes are registered into it with the chosen lifetime.
 /// </summary>
-public sealed class CronnerJobServices : IDisposable
+internal sealed class CronnerJobServices : IDisposable
 {
     private readonly object _gate = new();
     private Action<IServiceCollection>? _configure;

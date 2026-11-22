@@ -11,12 +11,12 @@ public static class CronnerRedisBuilderExtensions
 
         var options = new CronnerRedisOptions();
         configure(options);
-        builder.StoreHolder.ConfigureStore(
+        builder.UseStore(
             sp => new RedisCronnerStore(RedisConnectionResolver.Resolve(sp, options), options.KeyPrefix),
-            "UseRedisAsStore()",
             // Singleton by design: IConnectionMultiplexer is thread-safe and intended to be shared,
             // so concurrent scheduler operations can use one store instance safely.
-            CronnerStoreLifetime.Singleton);
+            CronnerStoreLifetime.Singleton,
+            "UseRedisAsStore()");
         return builder;
     }
 
@@ -30,17 +30,17 @@ public static class CronnerRedisBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
 
-        builder.StoreHolder.ConfigureStore(
+        builder.UseStore(
             sp =>
             {
                 var options = new CronnerRedisOptions();
                 configure(sp, options);
                 return new RedisCronnerStore(RedisConnectionResolver.Resolve(sp, options), options.KeyPrefix);
             },
-            "UseRedisAsStore()",
             // Singleton by design: IConnectionMultiplexer is thread-safe and intended to be shared,
             // so concurrent scheduler operations can use one store instance safely.
-            CronnerStoreLifetime.Singleton);
+            CronnerStoreLifetime.Singleton,
+            "UseRedisAsStore()");
         return builder;
     }
 

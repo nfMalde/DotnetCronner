@@ -20,7 +20,7 @@ namespace DotnetCronner;
 /// here for a consumer to call. Subscribe to the telemetry by name instead — see
 /// <see cref="CronnerDiagnostics"/>.
 /// </remarks>
-public sealed class CronnerInstrumentation : IDisposable
+internal sealed class CronnerInstrumentation : IDisposable
 {
     private static readonly string Version =
         typeof(CronnerInstrumentation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion

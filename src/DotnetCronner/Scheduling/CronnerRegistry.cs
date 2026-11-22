@@ -6,7 +6,7 @@ namespace DotnetCronner;
 /// <summary>
 /// The process-wide catalog of registered task descriptors, keyed by id. Registered as a singleton.
 /// </summary>
-public sealed class CronnerRegistry
+internal sealed class CronnerRegistry
 {
     private readonly ConcurrentDictionary<string, CronnerJobDescriptor> _byId = new(StringComparer.Ordinal);
 

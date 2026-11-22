@@ -16,9 +16,6 @@ public interface ICronnerBuilder
     /// <summary>The mutable runtime options.</summary>
     CronnerOptions Options { get; }
 
-    /// <summary>The store holder, used by store/cache extension packages to plug in their implementations.</summary>
-    CronnerStoreHolder StoreHolder { get; }
-
     /// <summary>
     /// Uses the given custom <see cref="ICronnerStore"/> implementation as the backing store. The
     /// instance is resolved from DI when available, otherwise created via its constructor.
@@ -32,6 +29,26 @@ public interface ICronnerBuilder
     /// </param>
     ICronnerBuilder UseStore<TStore>(CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton)
         where TStore : class, ICronnerStore;
+
+    /// <summary>
+    /// Uses the <see cref="ICronnerStore"/> built by <paramref name="factory"/> as the backing store. This is
+    /// the extension point for store packages: wrap it in your own <c>UseXyzStore(...)</c> extension method.
+    /// Only one store can be configured; a second call (through any <c>Use…Store</c> method) throws.
+    /// </summary>
+    /// <param name="factory">
+    ///     Builds the store. It receives the application's root provider for a
+    ///     <see cref="CronnerStoreLifetime.Singleton"/> store and the current scope's provider for a
+    ///     <see cref="CronnerStoreLifetime.Scoped"/> one.
+    /// </param>
+    /// <param name="lifetime">How long one store instance lives — see <see cref="CronnerStoreLifetime"/>.</param>
+    /// <param name="displayName">
+    ///     The name used in the "a store is already configured" error, e.g. <c>"UseXyzStore()"</c>. Defaults to
+    ///     <c>"UseStore(factory)"</c>.
+    /// </param>
+    ICronnerBuilder UseStore(
+        Func<IServiceProvider, ICronnerStore> factory,
+        CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton,
+        string? displayName = null);
 
     /// <summary>Enables a second-level cache in front of the store.</summary>
     ICronnerBuilder UseSecondLevelCache(Action<ICronnerCacheBuilder> configure);

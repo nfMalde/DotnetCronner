@@ -10,7 +10,7 @@ namespace DotnetCronner;
 /// are resolved in one scope per event. A hook that throws is logged and swallowed so it never breaks
 /// task execution. Registered as a singleton.
 /// </summary>
-public sealed class CronnerHookDispatcher
+internal sealed class CronnerHookDispatcher
 {
     private readonly CronnerHookRegistry _globalHooks;
     private readonly ILogger<CronnerHookDispatcher> _logger;

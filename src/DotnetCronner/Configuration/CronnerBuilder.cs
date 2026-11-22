@@ -28,7 +28,7 @@ internal sealed class CronnerBuilder : ICronnerBuilder
 
     public CronnerOptions Options { get; }
 
-    public CronnerStoreHolder StoreHolder { get; }
+    internal CronnerStoreHolder StoreHolder { get; }
 
     public ICronnerBuilder UseStore<TStore>(
         CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton) where TStore : class, ICronnerStore
@@ -37,6 +37,16 @@ internal sealed class CronnerBuilder : ICronnerBuilder
             sp => ActivatorUtilities.GetServiceOrCreateInstance<TStore>(sp),
             $"UseStore<{typeof(TStore).Name}>()",
             lifetime);
+        return this;
+    }
+
+    public ICronnerBuilder UseStore(
+        Func<IServiceProvider, ICronnerStore> factory,
+        CronnerStoreLifetime lifetime = CronnerStoreLifetime.Singleton,
+        string? displayName = null)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        StoreHolder.ConfigureStore(factory, displayName ?? "UseStore(factory)", lifetime);
         return this;
     }
 

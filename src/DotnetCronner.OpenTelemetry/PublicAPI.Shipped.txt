@@ -1,0 +1,5 @@
+#nullable enable
+OpenTelemetry.Metrics.CronnerMeterProviderBuilderExtensions
+OpenTelemetry.Trace.CronnerTracerProviderBuilderExtensions
+static OpenTelemetry.Metrics.CronnerMeterProviderBuilderExtensions.AddCronnerInstrumentation(this OpenTelemetry.Metrics.MeterProviderBuilder! builder) -> OpenTelemetry.Metrics.MeterProviderBuilder!
+static OpenTelemetry.Trace.CronnerTracerProviderBuilderExtensions.AddCronnerInstrumentation(this OpenTelemetry.Trace.TracerProviderBuilder! builder) -> OpenTelemetry.Trace.TracerProviderBuilder!

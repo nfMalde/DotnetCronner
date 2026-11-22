@@ -1,0 +1,21 @@
+#nullable enable
+const Microsoft.Extensions.DependencyInjection.CronnerHealthChecksBuilderExtensions.DefaultName = "dotnetcronner" -> string!
+DotnetCronner.CronnerHealthCheck
+DotnetCronner.CronnerHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+DotnetCronner.CronnerHealthCheck.CronnerHealthCheck(DotnetCronner.CronnerSchedulerDiagnostics! diagnostics, DotnetCronner.CronnerOptions! options, DotnetCronner.CronnerHealthCheckOptions! checkOptions, System.IServiceProvider! services) -> void
+DotnetCronner.CronnerHealthCheckOptions
+DotnetCronner.CronnerHealthCheckOptions.CheckPolling.get -> bool
+DotnetCronner.CronnerHealthCheckOptions.CheckPolling.set -> void
+DotnetCronner.CronnerHealthCheckOptions.CheckStore.get -> bool
+DotnetCronner.CronnerHealthCheckOptions.CheckStore.set -> void
+DotnetCronner.CronnerHealthCheckOptions.CronnerHealthCheckOptions() -> void
+DotnetCronner.CronnerHealthCheckOptions.MaxTimeSincePoll.get -> System.TimeSpan?
+DotnetCronner.CronnerHealthCheckOptions.MaxTimeSincePoll.set -> void
+DotnetCronner.CronnerHealthCheckOptions.MissedPollsAllowed.get -> int
+DotnetCronner.CronnerHealthCheckOptions.MissedPollsAllowed.set -> void
+DotnetCronner.CronnerHealthCheckOptions.StalledRunThreshold.get -> System.TimeSpan?
+DotnetCronner.CronnerHealthCheckOptions.StalledRunThreshold.set -> void
+DotnetCronner.CronnerHealthCheckOptions.StoreTimeout.get -> System.TimeSpan
+DotnetCronner.CronnerHealthCheckOptions.StoreTimeout.set -> void
+Microsoft.Extensions.DependencyInjection.CronnerHealthChecksBuilderExtensions
+static Microsoft.Extensions.DependencyInjection.CronnerHealthChecksBuilderExtensions.AddCronner(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<DotnetCronner.CronnerHealthCheckOptions!>? configure = null, string? name = null, Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!

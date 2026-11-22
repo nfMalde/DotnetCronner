@@ -27,3 +27,23 @@ public sealed class SqliteFileSchedulerExclusivityTests : SchedulerExclusivityTe
 {
     protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new SqliteFileBackend());
 }
+
+public sealed class InMemoryStoreDataContractTests : StoreDataContractTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new InMemoryBackend());
+}
+
+public sealed class SqliteFileStoreDataContractTests : StoreDataContractTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new SqliteFileBackend());
+}
+
+public sealed class InMemorySchedulerScenarioTests : SchedulerScenarioTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new InMemoryBackend());
+}
+
+public sealed class SqliteFileSchedulerScenarioTests : SchedulerScenarioTests
+{
+    protected override Task<IStoreBackend> CreateBackendAsync() => Task.FromResult<IStoreBackend>(new SqliteFileBackend());
+}

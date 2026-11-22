@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace DotnetCronner;
 
 /// <summary>Computes next run times from cron strings, caching parsed expressions. Registered as a singleton.</summary>
-public sealed class CronnerScheduleCalculator
+internal sealed class CronnerScheduleCalculator
 {
     private readonly ConcurrentDictionary<string, CronExpression> _cache = new(StringComparer.Ordinal);
 

@@ -6,6 +6,25 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this proje
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Released with the suite at 0.3.0. No API change in this package.
+
+### Added
+- The public API of the package is tracked in `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt`; the
+  build fails when a public member is added, changed or removed without updating them. What that means for
+  `ICronnerStore` implementers — new members only ever arrive with a default implementation — is written
+  down in [docs/api-stability.md](../../docs/api-stability.md).
+
+### Changed
+- The behavior every `ICronnerStore` must show is now defined by shared contract suites that run against
+  all shipped stores, not only for the execution lock but for the whole interface (round trip, listing,
+  claim eligibility, removal, progress, history, retention). One expectation is newly explicit:
+  `RemoveAsync` and `PruneCompletedOneOffsAsync` take the removed job's execution history with them. See
+  [docs/custom-store.md](../../docs/custom-store.md#the-contract-suites) to run the suites against a custom
+  store.
+
+
 ## [0.2.0] - 2026-10-18
 
 Released with the suite at 0.2.0. Adds the store-liveness probe the new health checks build on —

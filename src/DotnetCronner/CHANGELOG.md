@@ -6,6 +6,45 @@ All notable changes to the **DotnetCronner** (core) package are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Store and API stabilization. The public surface is cut down to what applications and store authors are
+meant to use, and is now tracked so it cannot change by accident; the stores are held to one shared
+behavioral contract. **Contains breaking changes** — see *Changed* and *Removed*. Background in
+[docs/api-stability.md](../../docs/api-stability.md).
+
+### Added
+- `ICronnerBuilder.UseStore(Func<IServiceProvider, ICronnerStore> factory, CronnerStoreLifetime lifetime,
+  string? displayName)` — configures the backing store from a factory. This is the extension point for
+  store packages (the Redis and EF Core packages are built on it) and replaces reaching into the builder's
+  store holder. `displayName` is what the "a store is already configured" error calls your method.
+- The public API of the package is tracked in `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt`; the
+  build fails when a public member is added, changed or removed without updating them.
+
+### Changed
+- **Breaking:** the scheduler engine's own types are now `internal`: `CronnerHostedService`,
+  `CronnerStoreHolder`, `CronnerStoreAccessor`, `CronnerRegistry`, `CronnerHookRegistry`,
+  `CronnerHookDispatcher`, `CronnerExecutionTracker`, `CronnerScheduleCalculator`, `CronnerScheduleSignal`,
+  `CronnerJobDescriptor`, `CronnerArgument`, `CronnerArgumentKind`, `CronnerJobServices`,
+  `CronnerInstrumentation` and the concrete `CronnerClient`. None of them was part of the documented API;
+  code that resolved one from the container needs the public equivalent — `ICronnerClient` instead of
+  `CronnerClient`, `ICronnerClient.GetRegisteredTasks()` instead of `CronnerRegistry`. The full table is in
+  [docs/api-stability.md](../../docs/api-stability.md#internal).
+
+### Removed
+- **Breaking:** `ICronnerBuilder.StoreHolder`. Use `ICronnerBuilder.UseStore(factory, lifetime,
+  displayName)`. **This affects the store packages:** `DotnetCronner.Stores.Redis` and
+  `DotnetCronner.Stores.EntityFrameworkCore` up to `0.2.x` call the removed member and fail at startup
+  against this version — upgrade them to `0.3.0` together with this package.
+- `CronnerStoreHolder.Build(IServiceProvider)`, obsolete since 0.0.6, went with the type.
+
+### Fixed
+- `InMemoryCronnerStore.PruneCompletedOneOffsAsync` left the execution history of the one-off instances it
+  removed behind, so with one-off retention *and* execution history enabled the in-memory store grew by one
+  orphaned history record per pruned instance. It now removes the history with the instance, as
+  `RemoveAsync` and the Redis and EF Core stores already did. Found by the new shared store contract tests.
+
+
 ## [0.2.0] - 2026-10-18
 
 Observability: the scheduler now reports on itself — metrics, distributed-tracing spans and live
